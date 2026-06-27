@@ -3,6 +3,7 @@
     "name": "Encontro",
     "slug": "encontro",
     "version": "2.0.0",
+    "owner": "encontro",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
