@@ -6,19 +6,44 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "splash": { "image": "./assets/splash.png", "resizeMode": "contain", "backgroundColor": "#ffffff" },
-    "ios": { "supportsTablet": true, "bundleIdentifier": "com.encontro.app" },
-    "android": { 
-      "adaptiveIcon": { "foregroundImage": "./assets/adaptive-icon.png", "backgroundColor": "#ffffff" }, 
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
       "package": "com.encontro.app",
       "versionCode": 2,
-      "permissions": ["ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION"]
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "com.android.vending.BILLING"
+      ],
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      }
     },
-    "web": { "favicon": "./assets/favicon.png" },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "COLE-SEU-PROJECT-ID-AQUI"
+      }
+    },
     "plugins": [
       [
         "expo-location",
-        { "locationAlwaysAndWhenInUsePermission": "O Encontro usa sua localização para mostrar pessoas próximas a você." }
+        {
+          "locationAlwaysAndWhenInUsePermission": "O Encontro precisa da sua localização para encontrar pessoas próximas."
+        }
       ]
     ]
   }
