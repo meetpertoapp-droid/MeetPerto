@@ -11,7 +11,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { UserContext } from '../../../App';
 
-export default function Etapa6Finalizar({ route, navigation }) {
+export default function Etapa7Finalizar({
+
   const {
     metodo,
     valor,
