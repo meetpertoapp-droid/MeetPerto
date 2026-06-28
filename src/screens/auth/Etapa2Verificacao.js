@@ -7,7 +7,8 @@ import {
   StyleSheet,
   Alert,
   KeyboardAvoidingView,
-  Platform
+  Platform,
+  ActivityIndicator
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -61,7 +62,7 @@ export default function Etapa2Verificacao({ route, navigation }) {
       inputs.current[index + 1].focus();
     }
 
-    if (novoCodigo.every(digito => digito!== '') && index === 5) {
+    if (novoCodigo.every(digito => digito!== '')) {
       verificarCodigo(novoCodigo.join(''));
     }
   };
@@ -79,7 +80,7 @@ export default function Etapa2Verificacao({ route, navigation }) {
       setLoading(false);
 
       if (codigoCompleto === '123456') {
-        Alert.alert('Sucesso!', 'Conta verificada');
+        Alert.alert('Sucesso!', 'Conta verificada com sucesso');
         navigation.navigate('Etapa3Informacoes', {
           metodo,
           valor,
@@ -105,7 +106,7 @@ export default function Etapa2Verificacao({ route, navigation }) {
             <Text style={styles.voltarTexto}>← Voltar</Text>
           </TouchableOpacity>
 
-          <Text style={styles.logo}>MeetPerto 💕</Text>
+          <Text style={styles.logo}>MeetPerto</Text>
           <Text style={styles.titulo}>Verificação</Text>
 
           <Text style={styles.subtitulo}>
@@ -216,3 +217,45 @@ const styles = StyleSheet.create({
     height: 56,
     borderWidth: 2,
     borderColor: '#E0E0E0',
+    borderRadius: 12,
+    textAlign: 'center',
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#333',
+    backgroundColor: '#FAFAFA',
+  },
+  botao: {
+    backgroundColor: '#FF4B8B',
+    padding: 18,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  botaoDesabilitado: {
+    opacity: 0.6,
+  },
+  botaoTexto: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  reenviarContainer: {
+    alignItems: 'center',
+    marginTop: 24,
+  },
+  reenviarTexto: {
+    color: '#FF4B8B',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  timerTexto: {
+    color: '#999',
+    fontSize: 14,
+  },
+  dica: {
+    textAlign: 'center',
+    color: '#999',
+    fontSize: 12,
+    marginTop: 16,
+  },
+});
