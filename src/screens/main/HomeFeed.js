@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image, Dimensions, Alert, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
+import * as Linking from 'expo-linking';
 import Swiper from 'react-native-deck-swiper';
 import { Ionicons } from '@expo/vector-icons';
 import { db, auth } from '../firebaseConfig';
@@ -12,9 +13,9 @@ import {
   getDoc,
   getDocs,
   query,
-  where,
+  where, // FIX: esse import tava faltando
   serverTimestamp,
-  updateDoc
+  limit
 } from 'firebase/firestore';
 
 const { width, height } = Dimensions.get('window');
@@ -23,37 +24,51 @@ export default function HomeFeed({ navigation }) {
   const [location, setLocation] = useState(null);
   const [perfis, setPerfis] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [currentUser, setCurrentUser] = useState(null);
   const swiperRef = useRef(null);
-  const currentUser = auth.currentUser;
 
   useEffect(() => {
-    if (!currentUser) {
-      Alert.alert('Erro', 'Usuário não logado');
-      navigation.replace('Etapa1Cadastro');
-      return;
-    }
-    pedirPermissaoGPS();
+    const unsubscribe = auth.onAuthStateChanged(user => {
+      if (!user) {
+        navigation.replace('Etapa1Cadastro');
+        return;
+      }
+      setCurrentUser(user);
+    });
+
+    return unsubscribe;
   }, []);
+
+  useEffect(() => {
+    if (currentUser) {
+      pedirPermissaoGPS();
+    }
+  }, [currentUser]);
 
   const pedirPermissaoGPS = async () => {
     try {
       let { status } = await Location.requestForegroundPermissionsAsync();
       if (status!== 'granted') {
-        Alert.alert('Localização necessária', 'O MeetPerto precisa do seu GPS para mostrar pessoas próximas.');
-        setLoading(false);
+        Alert.alert(
+          'Localização necessária',
+          'Ative o GPS nas configurações para ver pessoas próximas.',
+          [
+            { text: 'Cancelar', onPress: () => setLoading(false) },
+            { text: 'Abrir Configurações', onPress: () => Linking.openSettings() }
+          ]
+        );
         return;
       }
 
       let location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
       setLocation(location.coords);
 
-      // SALVA MINHA LOCALIZAÇÃO NO FIRESTORE
-      await updateDoc(doc(db, 'usuarios', currentUser.uid), {
+      await setDoc(doc(db, 'usuarios', currentUser.uid), {
         latitude: location.coords.latitude,
         longitude: location.coords.longitude,
         online: true,
         ultimoAcesso: serverTimestamp()
-      });
+      }, { merge: true });
 
       await buscarUsuariosProximos(location.coords);
 
@@ -66,36 +81,34 @@ export default function HomeFeed({ navigation }) {
 
   const buscarUsuariosProximos = async (coords) => {
     try {
-      // 1. PEGA TODOS USUÁRIOS EXCETO EU
       const usuariosRef = collection(db, 'usuarios');
-      const q = query(usuariosRef, where('uid', '!=', currentUser.uid));
+      const q = query(usuariosRef, limit(50));
       const querySnapshot = await getDocs(q);
 
-      // 2. PEGA QUEM EU JÁ CURTI PRA NÃO MOSTRAR DE NOVO
       const curtidasRef = collection(db, 'curtidas');
       const curtidasQuery = query(curtidasRef, where('de', '==', currentUser.uid));
       const curtidasSnapshot = await getDocs(curtidasQuery);
       const jaCurti = curtidasSnapshot.docs.map(doc => doc.data().para);
 
       const usuarios = [];
-      querySnapshot.forEach((doc) => {
-        // PULA SE JÁ INTERAGI
-        if (jaCurti.includes(doc.id)) return;
+      querySnapshot.forEach((docSnap) => {
+        if (docSnap.id === currentUser.uid) return;
 
-        const data = doc.data();
-        // PULA SE NÃO TEM LAT/LONG
+        const data = docSnap.data();
+
+        if (jaCurti.includes(docSnap.id)) return;
         if (!data.latitude ||!data.longitude) return;
+        if (!data.fotos?.length ||!data.nome ||!data.idade) return;
 
         const distancia = calcularDistancia(coords.latitude, coords.longitude, data.latitude, data.longitude);
 
         usuarios.push({
-          id: doc.id,
+          id: docSnap.id,
         ...data,
           distancia
         });
       });
 
-      // ORDENA POR DISTÂNCIA
       const perfisOrdenados = usuarios.sort((a, b) => a.distancia - b.distancia);
       setPerfis(perfisOrdenados);
       setLoading(false);
@@ -166,10 +179,14 @@ export default function HomeFeed({ navigation }) {
 
       if (curtidaDoc.exists() && curtidaDoc.data().tipo!== 'dislike') {
         const matchId = [currentUser.uid, alvoId].sort().join('_');
-        await setDoc(doc(db, 'matches', matchId), {
-          usuarios: [currentUser.uid, alvoId],
-          timestamp: serverTimestamp()
-        });
+
+        if (currentUser.uid < alvoId) {
+          await setDoc(doc(db, 'matches', matchId), {
+            usuarios: [currentUser.uid, alvoId],
+            timestamp: serverTimestamp(),
+            vistoPor: [currentUser.uid]
+          });
+        }
         return true;
       }
       return false;
@@ -204,7 +221,10 @@ export default function HomeFeed({ navigation }) {
           <Text style={styles.emoji}>😢</Text>
           <Text style={styles.titulo}>Ninguém por perto</Text>
           <Text style={styles.subtitulo}>Volte mais tarde ou aumente seu raio</Text>
-          <TouchableOpacity style={styles.botao} onPress={pedirPermissaoGPS}>
+          <TouchableOpacity style={styles.botao} onPress={() => {
+            setLoading(true);
+            pedirPermissaoGPS();
+          }}>
             <Text style={styles.botaoTexto}>Tentar novamente</Text>
           </TouchableOpacity>
         </View>
@@ -231,19 +251,20 @@ export default function HomeFeed({ navigation }) {
             return (
               <View style={styles.card}>
                 <Image
-                  source={{ uri: card.fotos?.[0] || 'https://via.placeholder.com/400' }}
+                  source={{ uri: card.fotos?.[0]?? 'https://via.placeholder.com/400' }}
                   style={styles.cardImage}
+                  resizeMode="cover"
                 />
                 <View style={styles.cardFooter}>
                   <View style={styles.cardInfo}>
                     <Text style={styles.cardNome}>
-                      {card.nome}, {card.idade}
+                      {card.nome?? 'Sem nome'}, {card.idade?? '?'}
                       {card.online && <Text style={styles.online}> 🟢</Text>}
                     </Text>
                     <Text style={styles.cardDistancia}>
                       📍 {formatarDistancia(card.distancia)}
                     </Text>
-                    <Text style={styles.cardBio} numberOfLines={2}>{card.bio}</Text>
+                    <Text style={styles.cardBio} numberOfLines={2}>{card.bio?? ''}</Text>
                   </View>
                 </View>
               </View>
@@ -252,7 +273,7 @@ export default function HomeFeed({ navigation }) {
           onSwipedLeft={handleSwipeLeft}
           onSwipedRight={handleSwipeRight}
           onSwipedTop={handleSwipeTop}
-          onSwipedAll={() => Alert.alert('Acabou!', 'Você viu todo mundo próximo')}
+          onSwipedAll={() => setPerfis([])}
           backgroundColor="transparent"
           stackSize={3}
           stackSeparation={15}
@@ -286,13 +307,22 @@ export default function HomeFeed({ navigation }) {
       </View>
 
       <View style={styles.botoes}>
-        <TouchableOpacity style={[styles.botaoAcao, styles.botaoDislike]} onPress={() => swiperRef.current?.swipeLeft()}>
+        <TouchableOpacity
+          style={[styles.botaoAcao, styles.botaoDislike]}
+          onPress={() => perfis.length > 0 && swiperRef.current?.swipeLeft()}
+        >
           <Ionicons name="close" size={32} color="#FF3B30" />
         </TouchableOpacity>
-        <TouchableOpacity style={[styles.botaoAcao, styles.botaoSuperLike]} onPress={() => swiperRef.current?.swipeTop()}>
+        <TouchableOpacity
+          style={[styles.botaoAcao, styles.botaoSuperLike]}
+          onPress={() => perfis.length > 0 && swiperRef.current?.swipeTop()}
+        >
           <Ionicons name="star" size={28} color="#007AFF" />
         </TouchableOpacity>
-        <TouchableOpacity style={[styles.botaoAcao, styles.botaoLike]} onPress={() => swiperRef.current?.swipeRight()}>
+        <TouchableOpacity
+          style={[styles.botaoAcao, styles.botaoLike]}
+          onPress={() => perfis.length > 0 && swiperRef.current?.swipeRight()}
+        >
           <Ionicons name="heart" size={32} color="#4CD964" />
         </TouchableOpacity>
       </View>
