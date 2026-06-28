@@ -20,6 +20,7 @@ import Etapa5Preferencias from './src/screens/auth/Etapa5Preferencias';
 import Etapa6Finalizar from './src/screens/auth/Etapa6Finalizar';
 
 // Telas do App Principal
+import HomeFeed from './src/screens/main/HomeFeed';
 import FilaLinearScreen from './src/screens/FilaLinearScreen';
 import FiltrosScreen from './src/screens/FiltrosScreen';
 import RadarScreen from './src/screens/RadarScreen';
