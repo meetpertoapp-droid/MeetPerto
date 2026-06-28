@@ -4,8 +4,18 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
 import Swiper from 'react-native-deck-swiper';
 import { Ionicons } from '@expo/vector-icons';
-import { db, auth } from '../firebaseConfig'; // AJUSTA O CAMINHO
-import { collection, doc, setDoc, getDoc, getDocs, query, where, addDoc, serverTimestamp } from 'firebase/firestore';
+import { db, auth } from '../firebaseConfig'; // CONFIRMA SE O CAMINHO TÁ CERTO
+import { 
+  collection, 
+  doc, 
+  setDoc, 
+  getDoc, 
+  getDocs, 
+  query, 
+  where, 
+  serverTimestamp,
+  updateDoc
+} from 'firebase/firestore';
 
 const { width, height } = Dimensions.get('window');
 
@@ -13,11 +23,15 @@ export default function HomeFeed({ navigation }) {
   const [location, setLocation] = useState(null);
   const [perfis, setPerfis] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [index, setIndex] = useState(0);
   const swiperRef = useRef(null);
   const currentUser = auth.currentUser;
 
   useEffect(() => {
+    if (!currentUser) {
+      Alert.alert('Erro', 'Usuário não logado');
+      navigation.replace('Etapa1Cadastro');
+      return;
+    }
     pedirPermissaoGPS();
   }, []);
 
@@ -30,11 +44,21 @@ export default function HomeFeed({ navigation }) {
         return;
       }
 
-      let location = await Location.getCurrentPositionAsync({});
+      let location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
       setLocation(location.coords);
+      
+      // SALVA MINHA LOCALIZAÇÃO NO FIRESTORE
+      await updateDoc(doc(db, 'usuarios', currentUser.uid), {
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+        online: true,
+        ultimoAcesso: serverTimestamp()
+      });
+
       await buscarUsuariosProximos(location.coords);
 
     } catch (error) {
+      console.log('Erro GPS:', error);
       Alert.alert('Erro', 'Não foi possível obter sua localização');
       setLoading(false);
     }
@@ -42,15 +66,26 @@ export default function HomeFeed({ navigation }) {
 
   const buscarUsuariosProximos = async (coords) => {
     try {
-      // PEGA TODOS USUÁRIOS EXCETO EU
+      // 1. PEGA TODOS USUÁRIOS EXCETO EU
       const usuariosRef = collection(db, 'usuarios');
       const q = query(usuariosRef, where('uid', '!=', currentUser.uid));
       const querySnapshot = await getDocs(q);
       
+      // 2. PEGA QUEM EU JÁ CURTI PRA NÃO MOSTRAR DE NOVO
+      const curtidasRef = collection(db, 'curtidas');
+      const curtidasQuery = query(curtidasRef, where('de', '==', currentUser.uid));
+      const curtidasSnapshot = await getDocs(curtidasQuery);
+      const jaCurti = curtidasSnapshot.docs.map(doc => doc.data().para);
+      
       const usuarios = [];
       querySnapshot.forEach((doc) => {
+        // PULA SE JÁ INTERAGI
+        if (jaCurti.includes(doc.id)) return;
+        
         const data = doc.data();
-        // CALCULA DISTÂNCIA - usa geohash depois pra otimizar
+        // PULA SE NÃO TEM LAT/LONG
+        if (!data.latitude ||!data.longitude) return;
+        
         const distancia = calcularDistancia(coords.latitude, coords.longitude, data.latitude, data.longitude);
         
         usuarios.push({
@@ -66,6 +101,7 @@ export default function HomeFeed({ navigation }) {
       setLoading(false);
     } catch (error) {
       console.log('Erro ao buscar:', error);
+      Alert.alert('Erro', 'Falha ao buscar usuários');
       setLoading(false);
     }
   };
@@ -83,14 +119,15 @@ export default function HomeFeed({ navigation }) {
 
   const handleSwipeLeft = async (cardIndex) => {
     const perfil = perfis[cardIndex];
+    if (!perfil) return;
     await salvarAcao(perfil.id, 'dislike');
   };
 
   const handleSwipeRight = async (cardIndex) => {
     const perfil = perfis[cardIndex];
+    if (!perfil) return;
     await salvarAcao(perfil.id, 'like');
     
-    // VERIFICA SE DEU MATCH
     const deuMatch = await verificarMatch(perfil.id);
     if (deuMatch) {
       Alert.alert('🎉 Deu Match!', `Você e ${perfil.nome} se curtiram!`);
@@ -100,6 +137,7 @@ export default function HomeFeed({ navigation }) {
 
   const handleSwipeTop = async (cardIndex) => {
     const perfil = perfis[cardIndex];
+    if (!perfil) return;
     await salvarAcao(perfil.id, 'superlike');
     
     const deuMatch = await verificarMatch(perfil.id);
@@ -111,25 +149,22 @@ export default function HomeFeed({ navigation }) {
 
   const salvarAcao = async (alvoId, tipo) => {
     try {
-      // Salva: eu curti fulano
       await setDoc(doc(db, 'curtidas', `${currentUser.uid}_${alvoId}`), {
         de: currentUser.uid,
         para: alvoId,
-        tipo: tipo, // like, dislike, superlike
+        tipo: tipo,
         timestamp: serverTimestamp()
       });
     } catch (error) {
-      console.log('Erro ao salvar:', error);
+      console.log('Erro ao salvar curtida:', error);
     }
   };
 
   const verificarMatch = async (alvoId) => {
     try {
-      // Verifica se o outro já me curtiu
       const curtidaDoc = await getDoc(doc(db, 'curtidas', `${alvoId}_${currentUser.uid}`));
       
       if (curtidaDoc.exists() && curtidaDoc.data().tipo!== 'dislike') {
-        // CRIA O MATCH
         const matchId = [currentUser.uid, alvoId].sort().join('_');
         await setDoc(doc(db, 'matches', matchId), {
           usuarios: [currentUser.uid, alvoId],
@@ -190,11 +225,15 @@ export default function HomeFeed({ navigation }) {
         <Swiper
           ref={swiperRef}
           cards={perfis}
+          keyExtractor={(card) => card.id}
           renderCard={(card) => {
             if (!card) return null;
             return (
               <View style={styles.card}>
-                <Image source={{ uri: card.fotos[0] }} style={styles.cardImage} />
+                <Image 
+                  source={{ uri: card.fotos?.[0] || 'https://via.placeholder.com/400' }} 
+                  style={styles.cardImage} 
+                />
                 <View style={styles.cardFooter}>
                   <View style={styles.cardInfo}>
                     <Text style={styles.cardNome}>
@@ -204,7 +243,7 @@ export default function HomeFeed({ navigation }) {
                     <Text style={styles.cardDistancia}>
                       📍 {formatarDistancia(card.distancia)}
                     </Text>
-                    <Text style={styles.cardBio}>{card.bio}</Text>
+                    <Text style={styles.cardBio} numberOfLines={2}>{card.bio}</Text>
                   </View>
                 </View>
               </View>
@@ -214,16 +253,34 @@ export default function HomeFeed({ navigation }) {
           onSwipedRight={handleSwipeRight}
           onSwipedTop={handleSwipeTop}
           onSwipedAll={() => Alert.alert('Acabou!', 'Você viu todo mundo próximo')}
-          cardIndex={index}
           backgroundColor="transparent"
           stackSize={3}
           stackSeparation={15}
           animateOverlayLabelsOpacity
           animateCardOpacity
+          disableBottomSwipe
           overlayLabels={{
-            left: { title: 'NÃO', style: { label: { backgroundColor: '#FF3B30', color: 'white', fontSize: 24 } } },
-            right: { title: 'CURTI', style: { label: { backgroundColor: '#4CD964', color: 'white', fontSize: 24 } } },
-            top: { title: 'SUPER LIKE', style: { label: { backgroundColor: '#007AFF', color: 'white', fontSize: 24 } } }
+            left: { 
+              title: 'NÃO', 
+              style: { 
+                label: { backgroundColor: '#FF3B30', color: 'white', fontSize: 24, borderRadius: 10, padding: 10 },
+                wrapper: { alignItems: 'flex-end', marginTop: 30, marginRight: 30 }
+              } 
+            },
+            right: { 
+              title: 'CURTI', 
+              style: { 
+                label: { backgroundColor: '#4CD964', color: 'white', fontSize: 24, borderRadius: 10, padding: 10 },
+                wrapper: { alignItems: 'flex-start', marginTop: 30, marginLeft: 30 }
+              } 
+            },
+            top: { 
+              title: 'SUPER LIKE', 
+              style: { 
+                label: { backgroundColor: '#007AFF', color: 'white', fontSize: 24, borderRadius: 10, padding: 10 },
+                wrapper: { alignItems: 'center', marginTop: 60 }
+              } 
+            }
           }}
         />
       </View>
