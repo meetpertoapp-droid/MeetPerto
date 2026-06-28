@@ -9,7 +9,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StatusBar, ActivityIndicator, View } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import HomeFeed from './src/screens/main/HomeFeed';
 
 // Telas de Cadastro
 import Etapa1Cadastro from './src/screens/auth/Etapa1Cadastro';
@@ -35,32 +34,15 @@ export const UserContext = createContext();
 export const CONFIG = {
   SLOGAN: "MeetPerto: O amor não mora longe.",
   COR_PRINCIPAL: '#FF4B8B',
-  COR_SECUNDARIA: '#9C27B0',
-  
-  PLANOS: {
-    gratis: {
-      nome: 'Grátis 48h',
-      preco: 0,
-      duracao: 48,
-    },
-    premium: {
-      nome: 'Premium',
-      preco: 29.90,
-      duracao: 30,
-    },
-    vip: {
-      nome: 'VIP',
-      preco: 49.90,
-      duracao: 30,
-    }
-  }
+  COR_SECUNDARIA: '#7B61FF',
+  API_URL: 'https://api.meetperto.com.br',
 };
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
 
-// ===== STACK DE AUTENTICAÇÃO =====
-function AuthStack() {
+// ===== STACK DE CADASTRO =====
+function CadastroStack() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="Etapa1Cadastro" component={Etapa1Cadastro} />
@@ -68,112 +50,68 @@ function AuthStack() {
       <Stack.Screen name="Etapa3Informacoes" component={Etapa3Informacoes} />
       <Stack.Screen name="Etapa4Fotos" component={Etapa4Fotos} />
       <Stack.Screen name="Etapa5Preferencias" component={Etapa5Preferencias} />
-      <Stack.Screen name="Etapa6Finalizar" component={Etapa6Finalizar} />
+      <Stack.Screen name="Etapa6Termos" component={Etapa6Termos} />
+      <Stack.Screen name="Etapa7Finalizar" component={Etapa7Finalizar} />
     </Stack.Navigator>
   );
 }
 
-// ===== TABS DO APP PRINCIPAL =====
-function MainTabs() {
+// ===== STACK PRINCIPAL DO APP =====
+function AppPrincipalStack() {
   return (
-    <Tab.Navigator
-      screenOptions={{
-        headerShown: false,
-        tabBarActiveTintColor: CONFIG.COR_PRINCIPAL,
-        tabBarInactiveTintColor: '#999',
-        tabBarStyle: {
-          height: 60,
-          paddingBottom: 8,
-          paddingTop: 8,
-        }
-      }}
-    >
-      <Tab.Screen
-        name="Fila"
-        component={FilaLinearScreen}
-        options={{
-          tabBarLabel: 'Fila',
-          tabBarIcon: ({color, size}) => <Icon name="cards" size={size} color={color} />
-        }}
-      />
-      <Tab.Screen
-        name="Radar"
-        component={RadarScreen}
-        options={{
-          tabBarLabel: 'Radar',
-          tabBarIcon: ({color, size}) => <Icon name="radar" size={size} color={color} />
-        }}
-      />
-      <Tab.Screen
-        name="Filtros"
-        component={FiltrosScreen}
-        options={{
-          tabBarLabel: 'Filtros',
-          tabBarIcon: ({color, size}) => <Icon name="filter-variant" size={size} color={color} />
-        }}
-      />
-      <Tab.Screen
-        name="Planos"
-        component={PlanosScreen}
-        options={{
-          tabBarLabel: 'Planos',
-          tabBarIcon: ({color, size}) => <Icon name="star" size={size} color={color} />
-        }}
-      />
-      <Tab.Screen
-        name="Perfil"
-        component={PerfilScreen}
-        options={{
-          tabBarLabel: 'Perfil',
-          tabBarIcon: ({color, size}) => <Icon name="account" size={size} color={color} />
-        }}
-      />
-    </Tab.Navigator>
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="HomeFeed" component={HomeFeed} />
+      <Stack.Screen name="FilaLinearScreen" component={FilaLinearScreen} />
+      <Stack.Screen name="FiltrosScreen" component={FiltrosScreen} />
+      <Stack.Screen name="RadarScreen" component={RadarScreen} />
+      <Stack.Screen name="PlanosScreen" component={PlanosScreen} />
+      <Stack.Screen name="PerfilScreen" component={PerfilScreen} />
+    </Stack.Navigator>
   );
 }
 
 // ===== APP PRINCIPAL =====
 export default function App() {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
+  const [userToken, setUserToken] = useState(null);
+  const [userData, setUserData] = useState(null);
 
   useEffect(() => {
-    checkUser();
+    // Verifica se usuário já está logado
+    const bootstrapAsync = async () => {
+      try {
+        const token = await AsyncStorage.getItem('userToken');
+        const data = await AsyncStorage.getItem('userData');
+        
+        if (token && data) {
+          setUserToken(token);
+          setUserData(JSON.parse(data));
+        }
+      } catch (e) {
+        console.log('Erro ao carregar dados:', e);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    bootstrapAsync();
   }, []);
 
-  const checkUser = async () => {
-    try {
-      const token = await AsyncStorage.getItem('userToken');
-      if (token) {
-        setUser({ token });
-      }
-    } catch (error) {
-      console.log('Erro ao verificar user:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  if (loading) {
+  if (isLoading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" color={CONFIG.COR_PRINCIPAL} />
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: CONFIG.COR_PRINCIPAL }}>
+        <ActivityIndicator size="large" color="#FFF" />
+        <StatusBar barStyle="light-content" />
       </View>
     );
   }
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <UserContext.Provider value={{ user, setUser }}>
+      <UserContext.Provider value={{ userToken, setUserToken, userData, setUserData }}>
         <NavigationContainer>
-          <StatusBar barStyle="dark-content" backgroundColor="#fff" />
-          <Stack.Navigator screenOptions={{ headerShown: false }}>
-            {user ? (
-              <Stack.Screen name="Main" component={MainTabs} />
-            ) : (
-              <Stack.Screen name="Auth" component={AuthStack} />
-            )}
-          </Stack.Navigator>
+          <StatusBar barStyle="dark-content" backgroundColor="#FFF" />
+          {userToken == null ? <CadastroStack /> : <AppPrincipalStack />}
         </NavigationContainer>
       </UserContext.Provider>
     </GestureHandlerRootView>
