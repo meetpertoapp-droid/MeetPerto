@@ -1,73 +1,55 @@
-// screens/FiltrosScreen.js
-import React, { useState, useContext } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text } from 'react-native';
+import Slider from '@react-native-community/slider';
 import { Picker } from '@react-native-picker/picker';
-import { UserContext, CONFIG } from '../App';
 
-export default function FiltrosScreen() {
-  const { userData } = useContext(UserContext);
-  const [idadeMin, setIdadeMin] = useState(CONFIG.IDADE_MIN);
-  const [idadeMax, setIdadeMax] = useState(CONFIG.IDADE_MAX);
-  const [estiloSelecionado, setEstiloSelecionado] = useState('gosto de todas');
+const HAIR_COLORS = [
+  { label: 'Ver todos', value: 'all' },
+  { label: 'Loiro(a)', value: 'blonde' },
+  { label: 'Ruivo(a)', value: 'red' },
+  { label: 'Castanho', value: 'brown' },
+  { label: 'Preto', value: 'black' }
+];
 
-  const idades = [];
-  for (let i = CONFIG.IDADE_MIN; i <= CONFIG.IDADE_MAX; i++) {
-    idades.push(i);
-  }
+const RELATIONSHIP_GOALS = [
+  { label: 'Ver todos', value: 'all' },
+  { label: 'Namoro sério', value: 'serious' },
+  { label: 'Algo casual', value: 'casual' },
+  { label: 'Amizade', value: 'friendship' }
+];
 
-  const estilos = userData?.genero === 'masculino' ? CONFIG.ESTILOS_MULHER : CONFIG.ESTILOS_HOMEM;
-
-  const salvarFiltros = () => {
-    // ONDE MUDAR: Salvar filtros na sua API/Banco
-    alert(`Filtros salvos: ${idadeMin}-${idadeMax} anos, Estilo: ${estiloSelecionado}`);
-  };
+export default function FiltersScreen() {
+  const [ageRange, setAgeRange] = useState([18, 70]);
+  const [hairColor, setHairColor] = useState('all');
+  const [goal, setGoal] = useState('all');
 
   return (
-    <ScrollView style={styles.container}>
-      <Text style={styles.titulo}>Filtros MeetPerto</Text>
+    <View>
+      <Text>Gênero: Homem, Mulher ou Ambos</Text>
       
-      <Text style={styles.label}>Idade mínima</Text>
-      <Picker
-        selectedValue={idadeMin}
-        onValueChange={(itemValue) => setIdadeMin(itemValue)}
-        style={styles.picker}>
-        {idades.map(idade => (
-          <Picker.Item key={idade} label={`${idade} anos`} value={idade} />
+      <Text>Idade: {ageRange[0]} a {ageRange[1]} anos</Text>
+      <Slider
+        minimumValue={18}
+        maximumValue={70}
+        step={1}
+        value={ageRange}
+        onValueChange={setAgeRange}
+        minimumTrackTintColor="#FF2D55"
+      />
+
+      <Text>Tom de cabelo</Text>
+      <Picker selectedValue={hairColor} onValueChange={setHairColor}>
+        {HAIR_COLORS.map(opt => (
+          <Picker.Item key={opt.value} label={opt.label} value={opt.value} />
         ))}
       </Picker>
 
-      <Text style={styles.label}>Idade máxima</Text>
-      <Picker
-        selectedValue={idadeMax}
-        onValueChange={(itemValue) => setIdadeMax(itemValue)}
-        style={styles.picker}>
-        {idades.map(idade => (
-          <Picker.Item key={idade} label={`${idade} anos`} value={idade} />
+      <Text>Buscando</Text>
+      <Picker selectedValue={goal} onValueChange={setGoal}>
+        {RELATIONSHIP_GOALS.map(opt => (
+          <Picker.Item key={opt.value} label={opt.label} value={opt.value} />
         ))}
       </Picker>
-
-      <Text style={styles.label}>Estilo preferido</Text>
-      <Picker
-        selectedValue={estiloSelecionado}
-        onValueChange={(itemValue) => setEstiloSelecionado(itemValue)}
-        style={styles.picker}>
-        {estilos.map(estilo => (
-          <Picker.Item key={estilo} label={estilo.charAt(0).toUpperCase() + estilo.slice(1)} value={estilo} />
-        ))}
-      </Picker>
-
-      <TouchableOpacity style={styles.botaoSalvar} onPress={salvarFiltros}>
-        <Text style={styles.botaoTexto}>Salvar Filtros</Text>
-      </TouchableOpacity>
-    </ScrollView>
+    </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, padding: 16, backgroundColor: '#FFF5F8' },
-  titulo: { fontSize: 22, fontWeight: 'bold', color: CONFIG.COR_PRINCIPAL, marginBottom: 20, textAlign: 'center' },
-  label: { fontSize: 16, fontWeight: '600', marginTop: 16, marginBottom: 8 },
-  picker: { backgroundColor: '#fff', borderRadius: 8 },
-  botaoSalvar: { backgroundColor: CONFIG.COR_PRINCIPAL, padding: 15, borderRadius: 8, marginTop: 30 },
-  botaoTexto: { color: '#fff', textAlign: 'center', fontWeight: 'bold', fontSize: 16 }
-});
