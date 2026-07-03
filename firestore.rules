@@ -2,23 +2,127 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    match /users/{userId} {
-      allow read: if request.auth!= null;
-      allow write: if request.auth.uid == userId;
+    // ==================== HELPERS ====================
+    function isAuth() {
+      return request.auth != null;
     }
     
-    match /profileViews/{viewId} {
-      allow create: if request.auth!= null 
-        && request.resource.data.viewerId == request.auth.uid
-        && (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.plan!= 'vip'
-        || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.invisibleMode!= true);
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+    
+    function isAdmin() {
+      return request.auth.token.admin == true;
+    }
+    
+    function isNotBanned() {
+      return !exists(/databases/$(database)/documents/usuarios/$(request.auth.uid)) ||
+             get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.banido != true;
+    }
+
+    // ==================== USUÁRIOS ====================
+    match /usuarios/{userId} {
+      // LEITURA: Só logado, não banido, e não pode ver campos sensíveis alheios
+      allow read: if isAuth() && isNotBanned();
+      
+      // CRIAÇÃO: Só pode criar seu próprio doc no cadastro
+      allow create: if isAuth() && isOwner(userId) &&
+                   request.resource.data.keys().hasAll(['nome', 'idade', 'email', 'criadoEm']) &&
+                   request.resource.data.idade >= 18; // Valida maioridade na regra
+      
+      // UPDATE: Só o dono, e não pode alterar campos críticos
+      allow update: if isAuth() && isOwner(userId) && isNotBanned() &&
+                   // Campos proibidos de alterar pelo cliente
+                   !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+                     'banido', 'admin', 'motivoBan', 'dataBan', 'email', 'uid'
+                   ]) &&
+                   // Geohash só via Cloud Function, nunca pelo app
+                   !('geohash' in request.resource.data);
+      
+      // DELETE: Ninguém. Só Cloud Function
+      allow delete: if false;
+      
+      // SUBCOLLECTIONS
+      match /matches/{matchId} {
+        allow read, write: if isAuth() && isOwner(userId) && isNotBanned();
+      }
+      match /likes_enviados/{likeId} {
+        allow read, write: if isAuth() && isOwner(userId) && isNotBanned();
+      }
+      match /likes_recebidos/{likeId} {
+        allow read: if isAuth() && isOwner(userId);
+        allow write: if false; // Só Cloud Function escreve like recebido
+      }
+      match /bloqueados/{bloqueadoId} {
+        allow read, write: if isAuth() && isOwner(userId);
+      }
+    }
+
+    // ==================== DENÚNCIAS ====================
+    match /denuncias/{denunciaId} {
+      // NINGUÉM LÊ DENÚNCIAS. Só Cloud Function
+      allow read: if false;
+      
+      // CRIAR: Só logado, não banido, e tem que ser o denunciante
+      allow create: if isAuth() && isNotBanned() &&
+                   request.resource.data.denuncianteId == request.auth.uid &&
+                   request.resource.data.keys().hasAll(['denunciadoId', 'motivo', 'timestamp']) &&
+                   request.resource.data.denunciadoId != request.auth.uid; // Não pode denunciar a si mesmo
+      
+      // UPDATE/DELETE: Ninguém. Só Cloud Function
+      allow update, delete: if false;
+    }
+
+    // ==================== ACEITES LEGAL - LGPD ====================
+    match /aceites_legal/{userId} {
+      // LER: Só o próprio usuário ou admin
+      allow read: if isAuth() && (isOwner(userId) || isAdmin());
+      
+      // CRIAR: Só 1 vez no cadastro
+      allow create: if isAuth() && isOwner(userId) &&
+                   request.resource.data.keys().hasAll(['uid', 'aceitouTermos', 'versaoTermos', 'ip', 'dataAceite']);
+      
+      // UPDATE/DELETE: Nunca. Prova jurídica imutável
+      allow update, delete: if false;
+    }
+
+    // ==================== LOGS - AUDITORIA ====================
+    match /logs_moderacao/{logId} {
+      allow read, write: if false; // Só Cloud Function
+    }
+    
+    match /logs_delecao_lgpd/{logId} {
+      allow read, write: if false; // Só Cloud Function
+    }
+
+    // ==================== CHAT ====================
+    match /chats/{chatId} {
+      // Só participantes do chat podem ler/escrever
+      allow read, write: if isAuth() && isNotBanned() &&
+                         request.auth.uid in resource.data.participantes;
+      
+      match /mensagens/{msgId} {
+        allow read: if isAuth() && isNotBanned() &&
+                   request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participantes;
         
-      allow read: if request.auth!= null 
-        && resource.data.profileId == request.auth.uid;
+        // CRIAR MSG: Só se for participante e não bloqueado
+        allow create: if isAuth() && isNotBanned() &&
+                     request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participantes &&
+                     request.resource.data.remetenteId == request.auth.uid;
+        
+        allow update, delete: if false; // Mensagem não edita nem apaga
+      }
+    }
+
+    // ==================== CONFIG PÚBLICA ====================
+    match /config/{docId} {
+      allow read: if true; // App precisa ler versão, etc
+      allow write: if isAdmin(); // Só admin muda
     }
     
-    match /chats/{chatId}/messages/{messageId} {
-      allow read, create: if request.auth!= null;
+    // ==================== BLOQUEIA TUDO O RESTO ====================
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }
