@@ -36,8 +36,8 @@ MIT license
 
 ### **Plano Grátis - R$ 0**
 - **10 curtidas por dia**: Zera à meia-noite
-- **Quem curtiu você: 100% borrado** com cadeado 🔒 + contador "X pessoas te curtiram"
-- **Chat após match**: **Bloqueado até a outra pessoa mandar a primeira mensagem**. Se ela puxar papo, o chat libera pra você responder grátis
+- **Quem curtiu você**: 100% borrado com cadeado 🔒 + contador "X pessoas te curtiram"
+- **Chat após match**: Bloqueado até a outra pessoa mandar a primeira mensagem. Se ela puxar papo, o chat libera pra você responder grátis
 - **Super Like**: Apenas comprando avulso
 
 ### **Plano Essencial - R$ 29,90/mês**
@@ -63,21 +63,21 @@ MIT license
 - **Exclusivo**: 1 Boost de perfil por semana + Selo VIP no perfil
 - **Filtros exclusivos**: Altura e Escolaridade
 
-**Super Like avulso: R$ 0,50 cada**  
+**Super Like avulso**: R$ 0,50 cada  
 **Pacotes**: 5 por R$ 1,99 | 15 por R$ 4,99 | 30 por R$ 8,99
 
 ---
 
 ## ✨ Como funciona
 
-**Cadastro novo já começa no Plano Grátis** com 10 curtidas/dia.
+Cadastro novo já começa no Plano Grátis com 10 curtidas/dia.
 
 **No Grátis:**
 1. **Curtidas**: 10 por dia. Acabou, só amanhã ou assina Essencial.
-2. **Aba "Curtiram você"**: Fotos **totalmente borradas** + contador "12 pessoas curtiram você".
+2. **Aba "Curtiram você"**: Fotos totalmente borradas + contador "12 pessoas curtiram você".
 3. **Botão principal**: "Ver quem é por R$ 29,90" → Plano Essencial
 4. **Botão secundário**: "Enviar Super Like por R$ 0,50" → Compra avulsa
-5. **Chat após match**: No Grátis, fica com aviso "Aguardando ela iniciar a conversa". **Se ela mandar msg, o chat libera e você responde grátis**. Se você quiser falar primeiro, precisa ser Essencial.
+5. **Chat após match**: No Grátis, fica com aviso "Aguardando ela iniciar a conversa". Se ela mandar msg, o chat libera e você responde grátis. Se você quiser falar primeiro, precisa ser Essencial.
 
 **Chat após match**: Sempre gratuito em todos os planos.
 
@@ -135,4 +135,47 @@ Sistema de 5 estrelas + campo para avaliações escritas dos usuários
 
 ---
 
-**MeetPerto © 2026 - O amor não mora longe**
+## 🛠️ Stack Técnica
+
+| Tech | Versão | Motivo |
+| --- | --- | --- |
+| **React Native** | Expo SDK 51+ | Hot reload, build fácil iOS/Android |
+| **Firebase** | v10+ | Auth, Firestore, Storage, Functions |
+| **Storage Rules** | v2 | Anti-spam 5min, validação MIME, limite 2MB |
+| **AsyncStorage** | - | Persistência de login offline |
+
+### **Features Técnicas Implementadas**
+
+1. **Upload Foto Perfil Nível Diretor** 
+   - Compressão automática 800px JPEG 70%
+   - Limite 2MB com validação client + server
+   - Anti-spam: 1 upload a cada 5 minutos via `ultimaFotoPerfil`
+   - Deleta foto antiga do Storage automaticamente - LGPD
+   - Progress bar em tempo real
+   - Path: `fotos_perfil/{uid}/{timestamp}.jpg`
+
+2. **Tela de Perfil Completa**
+   - Skeleton loading
+   - Pull-to-refresh 
+   - Verificação `emailVerified` obrigatória
+   - Remover foto + Logout + Deletar conta LGPD
+   - Trata erro `403 storage/unauthorized` das rules
+
+3. **Firebase Config Blindado**
+   - Validação de `.env` no boot
+   - Singleton pattern pra hot reload
+   - `initializeAuth` com `ReactNativeAsyncStorage`
+   - Analytics opcional
+
+---
+
+## ⚙️ Setup Local - Devs
+
+### **1. Instalação**
+
+```bash
+git clone https://github.com/seuuser/meetperto.git
+cd meetperto
+npm install
+npx expo install firebase react-native-safe-area-context @react-native-async-storage/async-storage expo-image-picker expo-image-manipulator
+npm install @expo/vector-icons
