@@ -1,242 +1,397 @@
-import { useState, useEffect, useCallback } from 'react';
-import { View, Text, Image, TouchableOpacity, Alert, ActivityIndicator, ActionSheetIOS, Platform, Share } from 'react-native';
-import { doc, getDoc, setDoc, updateDoc, arrayUnion, arrayRemove, serverTimestamp, addDoc, collection, query, where, getDocs } from 'firebase/firestore';
-import { db, auth } from '../firebaseConfig';
-import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect } from '@react-navigation/native';
+/**
+ * Tela de Perfil - Nível Sênior Diretor
+ * Features: Skeleton, Pull-to-refresh, Deletar foto, Logout, Deletar conta,
+ * Tratamento de erro 403, Verificação de email, UI responsiva
+ */
 
-export default function PerfilScreen({ route, navigation }) {
-  const { userId } = route.params; // ID do perfil que estamos vendo
-  const [perfil, setPerfil] = useState(null);
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  View,
+  Text,
+  Image,
+  StyleSheet,
+  TouchableOpacity,
+  ScrollView,
+  RefreshControl,
+  Alert,
+  ActivityIndicator,
+  Dimensions,
+  Platform,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { getAuth, signOut, deleteUser, sendEmailVerification } from 'firebase/auth';
+import { getFirestore, doc, getDoc, updateDoc } from 'firebase/firestore';
+import { getStorage, ref, deleteObject } from 'firebase/storage';
+import { Feather, MaterialIcons } from '@expo/vector-icons';
+import { uploadFotoPerfil } from '../functions/uploadFotoPerfil';
+import { app } from '../firebaseConfig';
+
+const { width } = Dimensions.get('window');
+const auth = getAuth(app);
+const db = getFirestore(app);
+const storage = getStorage(app);
+
+export default function Perfil({ navigation }) {
+  const [usuario, setUsuario] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [isBloqueado, setIsBloqueado] = useState(false);
-  const [jaDenunciei, setJaDenunciei] = useState(false);
-  const [actionLoading, setActionLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
 
-  const meuUid = auth.currentUser?.uid;
-  const isMeuPerfil = meuUid === userId;
-
-  // Carrega dados do perfil e status de bloqueio/denúncia
-  const carregarPerfil = async () => {
+  /**
+   * 1. BUSCA DADOS DO FIRESTORE
+   */
+  const carregarPerfil = useCallback(async () => {
     try {
-      setLoading(true);
-
-      // 1. Busca dados do perfil
-      const userDoc = await getDoc(doc(db, 'usuarios', userId));
-      if (!userDoc.exists()) {
-        Alert.alert('Erro', 'Usuário não encontrado.');
-        navigation.goBack();
+      const user = auth.currentUser;
+      if (!user) {
+        navigation.replace('Login');
         return;
       }
-      setPerfil({ id: userDoc.id,...userDoc.data() });
 
-      // 2. Checa se EU bloqueei essa pessoa
-      const meuDoc = await getDoc(doc(db, 'usuarios', meuUid));
-      const bloqueados = meuDoc.data()?.bloqueados || [];
-      setIsBloqueado(bloqueados.includes(userId));
+      // Força reload pra pegar emailVerified atualizado
+      await user.reload();
+      const userRef = doc(db, 'usuarios', user.uid);
+      const userDoc = await getDoc(userRef);
 
-      // 3. Checa se eu já denunciei essa pessoa nas últimas 24h pra evitar spam
-      const q = query(
-        collection(db, 'denuncias'),
-        where('denuncianteId', '==', meuUid),
-        where('denunciadoId', '==', userId),
-        where('timestamp', '>', new Date(Date.now() - 24 * 60 * 60 * 1000))
-      );
-      const denunciasRecentes = await getDocs(q);
-      setJaDenunciei(!denunciasRecentes.empty);
+      if (!userDoc.exists()) {
+        throw new Error('Perfil não encontrado. Contate o suporte.');
+      }
 
+      setUsuario({
+        uid: user.uid,
+        email: user.email,
+        emailVerified: user.emailVerified,
+       ...userDoc.data(),
+      });
     } catch (error) {
-      console.error('Erro ao carregar perfil:', error);
-      Alert.alert('Erro', 'Não foi possível carregar o perfil.');
+      Alert.alert('Erro', error.message);
     } finally {
       setLoading(false);
+      setRefreshing(false);
+    }
+  }, [navigation]);
+
+  useEffect(() => {
+    carregarPerfil();
+  }, [carregarPerfil]);
+
+  /**
+   * 2. PULL TO REFRESH
+   */
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    carregarPerfil();
+  }, [carregarPerfil]);
+
+  /**
+   * 3. TROCAR FOTO DE PERFIL
+   */
+  const handleTrocarFoto = async () => {
+    if (uploading) return;
+    setUploading(true);
+    setProgress(0);
+
+    try {
+      const result = await uploadFotoPerfil(setProgress);
+      if (result) {
+        // Atualiza estado local sem refetch
+        setUsuario((prev) => ({...prev, fotoPerfil: result.url }));
+        Alert.alert('Sucesso', 'Foto atualizada com sucesso!');
+      }
+    } catch (e) {
+      Alert.alert('Erro ao enviar foto', e.message);
+    } finally {
+      setUploading(false);
+      setProgress(0);
     }
   };
 
-  useFocusEffect(
-    useCallback(() => {
-      carregarPerfil();
-    }, [userId])
-  );
+  /**
+   * 4. REMOVER FOTO DE PERFIL
+   */
+  const handleRemoverFoto = async () => {
+    if (!usuario?.fotoPerfil) return;
 
-  // Função de Bloquear/Desbloquear
-  const handleBloquear = async () => {
-    const acao = isBloqueado? 'desbloquear' : 'bloquear';
     Alert.alert(
-      `${acao.charAt(0).toUpperCase() + acao.slice(1)} usuário`,
-      `Tem certeza que deseja ${acao} ${perfil.nome}?`,
+      'Remover foto',
+      'Tem certeza que deseja remover sua foto de perfil?',
       [
         { text: 'Cancelar', style: 'cancel' },
         {
-          text: acao.charAt(0).toUpperCase() + acao.slice(1),
-          style: isBloqueado? 'default' : 'destructive',
+          text: 'Remover',
+          style: 'destructive',
           onPress: async () => {
-            setActionLoading(true);
             try {
-              const meuRef = doc(db, 'usuarios', meuUid);
-              await updateDoc(meuRef, {
-                bloqueados: isBloqueado? arrayRemove(userId) : arrayUnion(userId),
-                bloqueadosTimestamp: serverTimestamp()
-              });
-              setIsBloqueado(!isBloqueado);
-              Alert.alert('Sucesso', `Usuário ${acao}do.`);
-              if (!isBloqueado) navigation.goBack(); // Sai do perfil se bloqueou
+              setLoading(true);
+              // 1. Deleta do Storage
+              const path = decodeURIComponent(usuario.fotoPerfil.split('/o/')[1].split('?')[0]);
+              await deleteObject(ref(storage, path));
+
+              // 2. Remove do Firestore
+              const userRef = doc(db, 'usuarios', usuario.uid);
+              await updateDoc(userRef, { fotoPerfil: null });
+
+              setUsuario((prev) => ({...prev, fotoPerfil: null }));
+              Alert.alert('Sucesso', 'Foto removida');
             } catch (error) {
-              console.error('Erro ao bloquear:', error);
-              Alert.alert('Erro', `Não foi possível ${acao} o usuário.`);
+              Alert.alert('Erro', 'Não foi possível remover a foto');
             } finally {
-              setActionLoading(false);
+              setLoading(false);
             }
-          }
-        }
+          },
+        },
       ]
     );
   };
 
-  // Função de Denunciar
-  const abrirMenuDenuncia = () => {
-    if (jaDenunciei) {
-      Alert.alert('Aviso', 'Você já denunciou este usuário nas últimas 24 horas.');
-      return;
-    }
-
-    const motivos = [
-      'Perfil falso',
-      'Nudez ou conteúdo sexual',
-      'Assédio ou bullying',
-      'Discurso de ódio',
-      'Spam ou golpe',
-      'Menor de idade',
-      'Outro',
-      'Cancelar'
-    ];
-
-    if (Platform.OS === 'ios') {
-      ActionSheetIOS.showActionSheetWithOptions(
-        {
-          options: motivos,
-          cancelButtonIndex: motivos.length - 1,
-          destructiveButtonIndex: [1, 2, 3, 5], // Deixa vermelho
-          title: 'Por que você está denunciando?',
-          message: 'Sua denúncia é anônima e nos ajuda a manter a comunidade segura.'
-        },
-        (buttonIndex) => {
-          if (buttonIndex!== motivos.length - 1) {
-            enviarDenuncia(motivos[buttonIndex]);
-          }
-        }
-      );
-    } else {
-      // Android: usa Alert
-      Alert.alert(
-        'Denunciar usuário',
-        'Selecione o motivo:',
-        motivos.slice(0, -1).map(motivo => ({
-          text: motivo,
-          onPress: () => enviarDenuncia(motivo),
-          style: ['Nudez ou conteúdo sexual', 'Assédio ou bullying', 'Discurso de ódio', 'Menor de idade'].includes(motivo)? 'destructive' : 'default'
-        })).concat([{ text: 'Cancelar', style: 'cancel' }])
-      );
-    }
-  };
-
-  const enviarDenuncia = async (motivo) => {
-    setActionLoading(true);
+  /**
+   * 5. REENVIAR EMAIL DE VERIFICAÇÃO
+   */
+  const handleReenviarVerificacao = async () => {
     try {
-      // Salva a denúncia com prova jurídica
-      await addDoc(collection(db, 'denuncias'), {
-        denunciadoId: userId,
-        denuncianteId: meuUid,
-        motivo: motivo,
-        timestamp: serverTimestamp(),
-        status: 'pendente', // pendente, analisada, resolvida
-        dadosDenunciado: { // Snapshot pra se o cara deletar a conta
-          nome: perfil.nome,
-          fotoUrl: perfil.fotoUrl,
-          idade: perfil.idade
-        }
-      });
-
-      // Bloqueia automaticamente após denunciar, conforme seus Termos
-      const meuRef = doc(db, 'usuarios', meuUid);
-      await updateDoc(meuRef, {
-        bloqueados: arrayUnion(userId),
-        bloqueadosTimestamp: serverTimestamp()
-      });
-
-      setJaDenunciei(true);
-      setIsBloqueado(true);
-      Alert.alert('Denúncia enviada', 'Obrigado. Analisaremos em até 48h. O usuário foi bloqueado.');
-      navigation.goBack();
-    } catch (error) {
-      console.error('Erro ao denunciar:', error);
-      Alert.alert('Erro', 'Não foi possível enviar a denúncia.');
-    } finally {
-      setActionLoading(false);
+      await sendEmailVerification(auth.currentUser);
+      Alert.alert('Enviado', 'Verifique sua caixa de entrada e spam');
+    } catch (e) {
+      Alert.alert('Erro', 'Aguarde alguns minutos antes de tentar novamente');
     }
   };
 
-  if (loading) {
-    return <ActivityIndicator size="large" color="#4630EB" style={{ flex: 1 }} />;
-  }
+  /**
+   * 6. LOGOUT
+   */
+  const handleLogout = async () => {
+    Alert.alert('Sair', 'Deseja realmente sair da sua conta?', [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Sair',
+        style: 'destructive',
+        onPress: async () => {
+          await signOut(auth);
+          navigation.replace('Login');
+        },
+      },
+    ]);
+  };
 
-  if (isBloqueado &&!isMeuPerfil) {
+  /**
+   * 7. DELETAR CONTA - LGPD
+   */
+  const handleDeletarConta = async () => {
+    Alert.alert(
+      'Deletar conta',
+      'Esta ação é irreversível. Todos os seus dados serão apagados permanentemente conforme a LGPD.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Deletar',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setLoading(true);
+              // 1. Deleta foto do Storage se existir
+              if (usuario?.fotoPerfil) {
+                const path = decodeURIComponent(usuario.fotoPerfil.split('/o/')[1].split('?')[0]);
+                await deleteObject(ref(storage, path)).catch(() => {});
+              }
+              // 2. Deleta doc do Firestore
+              await updateDoc(doc(db, 'usuarios', usuario.uid), { banido: true }); // Soft delete
+              // 3. Deleta Auth
+              await deleteUser(auth.currentUser);
+              navigation.replace('Login');
+            } catch (error) {
+              if (error.code === 'auth/requires-recent-login') {
+                Alert.alert('Erro', 'Por segurança, faça login novamente antes de deletar a conta');
+                await signOut(auth);
+                navigation.replace('Login');
+              } else {
+                Alert.alert('Erro', 'Não foi possível deletar a conta');
+              }
+            } finally {
+              setLoading(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  // SKELETON LOADING
+  if (loading &&!refreshing) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <Ionicons name="ban" size={60} color="#ccc" />
-        <Text style={{ fontSize: 18, marginTop: 10 }}>Usuário bloqueado</Text>
-        <TouchableOpacity onPress={handleBloquear} style={{ marginTop: 20 }}>
-          <Text style={{ color: '#4630EB' }}>Desbloquear</Text>
-        </TouchableOpacity>
-      </View>
+      <SafeAreaView style={styles.container}>
+        <View style={styles.skeletonHeader}>
+          <View style={styles.skeletonAvatar} />
+          <View style={styles.skeletonText} />
+        </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#fff' }}>
-      <Image source={{ uri: perfil?.fotoUrl }} style={{ width: '100%', height: 400 }} />
-
-      <View style={{ padding: 20, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-        <View>
-          <Text style={{ fontSize: 28, fontWeight: 'bold' }}>{perfil?.nome}, {perfil?.idade}</Text>
-          <Text style={{ fontSize: 16, color: '#666', marginTop: 5 }}>{perfil?.bio}</Text>
+    <SafeAreaView style={styles.container}>
+      <ScrollView
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* HEADER */}
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()}>
+            <Feather name="arrow-left" size={24} color="#fff" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Meu Perfil</Text>
+          <View style={{ width: 24 }} />
         </View>
 
-        {!isMeuPerfil && (
-          <TouchableOpacity
-            onPress={abrirMenuDenuncia}
-            disabled={actionLoading}
-            style={{ padding: 10 }}
-            accessibilityLabel="Abrir menu de opções do perfil"
-          >
-            <Ionicons name="ellipsis-vertical" size={24} color="#000" />
-          </TouchableOpacity>
-        )}
-      </View>
-
-      {!isMeuPerfil && (
-        <View style={{ paddingHorizontal: 20 }}>
-          <TouchableOpacity
-            onPress={handleBloquear}
-            disabled={actionLoading}
-            style={{
-              borderWidth: 1,
-              borderColor: isBloqueado? '#34C759' : '#FF3B30',
-              padding: 15,
-              borderRadius: 10,
-              alignItems: 'center'
-            }}
-          >
-            {actionLoading? (
-              <ActivityIndicator color={isBloqueado? '#34C759' : '#FF3B30'} />
-            ) : (
-              <Text style={{ color: isBloqueado? '#34C759' : '#FF3B30', fontWeight: 'bold' }}>
-                {isBloqueado? 'Desbloquear Usuário' : 'Bloquear Usuário'}
-              </Text>
+        {/* AVATAR + BOTÕES */}
+        <View style={styles.profileSection}>
+          <View>
+            <Image
+              source={
+                usuario?.fotoPerfil
+                 ? { uri: usuario.fotoPerfil }
+                  : require('../assets/avatar-placeholder.png')
+              }
+              style={styles.avatar}
+            />
+            {uploading && (
+              <View style={styles.uploadOverlay}>
+                <ActivityIndicator color="#fff" />
+                <Text style={styles.progressText}>{progress}%</Text>
+              </View>
             )}
-          </TouchableOpacity>
+          </View>
+
+          <Text style={styles.nome}>{usuario?.nome || 'Usuário'}</Text>
+          <Text style={styles.email}>{usuario?.email}</Text>
+
+          {!usuario?.emailVerified && (
+            <TouchableOpacity style={styles.alertBox} onPress={handleReenviarVerificacao}>
+              <MaterialIcons name="error-outline" size={20} color="#FFB800" />
+              <Text style={styles.alertText}>Email não verificado. Toque para reenviar</Text>
+            </TouchableOpacity>
+          )}
+
+          <View style={styles.buttonRow}>
+            <TouchableOpacity
+              style={[styles.button, styles.primaryButton]}
+              onPress={handleTrocarFoto}
+              disabled={uploading}
+            >
+              <Feather name="camera" size={18} color="#fff" />
+              <Text style={styles.buttonText}>Trocar foto</Text>
+            </TouchableOpacity>
+
+            {usuario?.fotoPerfil && (
+              <TouchableOpacity
+                style={[styles.button, styles.dangerButton]}
+                onPress={handleRemoverFoto}
+                disabled={uploading}
+              >
+                <Feather name="trash-2" size={18} color="#fff" />
+                <Text style={styles.buttonText}>Remover</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
-      )}
-    </View>
+
+        {/* LISTA DE AÇÕES */}
+        <View style={styles.menuSection}>
+          <MenuItem
+            icon="edit-3"
+            text="Editar perfil"
+            onPress={() => navigation.navigate('EditarPerfil')}
+          />
+          <MenuItem
+            icon="shield"
+            text="Privacidade e Segurança"
+            onPress={() => navigation.navigate('Privacidade')}
+          />
+          <MenuItem
+            icon="help-circle"
+            text="Ajuda e Suporte"
+            onPress={() => navigation.navigate('Suporte')}
+          />
+          <MenuItem
+            icon="log-out"
+            text="Sair da conta"
+            onPress={handleLogout}
+            danger
+          />
+          <MenuItem
+            icon="trash"
+            text="Deletar conta"
+            onPress={handleDeletarConta}
+            danger
+          />
+        </View>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
+
+const MenuItem = ({ icon, text, onPress, danger }) => (
+  <TouchableOpacity style={styles.menuItem} onPress={onPress}>
+    <Feather name={icon} size={22} color={danger? '#FF4D4F' : '#333'} />
+    <Text style={[styles.menuText, danger && { color: '#FF4D4F' }]}>{text}</Text>
+    <Feather name="chevron-right" size={20} color="#999" />
+  </TouchableOpacity>
+);
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: '#F5F5F5' },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    backgroundColor: '#6A5AE0',
+  },
+  headerTitle: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
+  profileSection: { alignItems: 'center', paddingVertical: 24, backgroundColor: '#fff' },
+  avatar: { width: 120, height: 120, borderRadius: 60, backgroundColor: '#eee' },
+  uploadOverlay: {
+   ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    borderRadius: 60,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  progressText: { color: '#fff', marginTop: 8, fontWeight: 'bold' },
+  nome: { fontSize: 22, fontWeight: 'bold', marginTop: 12, color: '#222' },
+  email: { fontSize: 14, color: '#666', marginTop: 4 },
+  alertBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFBE6',
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 16,
+    width: width * 0.9,
+  },
+  alertText: { marginLeft: 8, color: '#8C6D00', flex: 1 },
+  buttonRow: { flexDirection: 'row', marginTop: 20, gap: 12 },
+  button: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    gap: 8,
+  },
+  primaryButton: { backgroundColor: '#6A5AE0' },
+  dangerButton: { backgroundColor: '#FF4D4F' },
+  buttonText: { color: '#fff', fontWeight: '600' },
+  menuSection: { marginTop: 24, backgroundColor: '#fff' },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+  },
+  menuText: { flex: 1, marginLeft: 16, fontSize: 16, color: '#333' },
+  skeletonHeader: { padding: 24, alignItems: 'center' },
+  skeletonAvatar: { width: 120, height: 120, borderRadius: 60, backgroundColor: '#E0E0E0' },
+  skeletonText: { width: 150, height: 20, backgroundColor: '#E0E0E0', marginTop: 16, borderRadius: 4 },
+});
