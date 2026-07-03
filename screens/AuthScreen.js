@@ -1,180 +1,169 @@
-import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from "firebase/auth";
-import { auth, db } from '../firebaseConfig';
-import { doc, setDoc, serverTimestamp } from "firebase/firestore";
+import { useState } from 'react';
+import { View, Text, TextInput, Alert, ActivityIndicator, TouchableOpacity, KeyboardAvoidingView, Platform } from 'react-native';
+import { signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
+import { auth } from '../firebaseConfig';
 
-export default function AuthScreen() {
+export default function AuthScreen({ navigation }) {
   const [email, setEmail] = useState('');
   const [senha, setSenha] = useState('');
-  const [nome, setNome] = useState('');
-  const [modoCadastro, setModoCadastro] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
 
-  const traduzErro = (codigo) => {
-    if (codigo === 'auth/invalid-email') return 'Email inválido';
-    if (codigo === 'auth/user-not-found') return 'Usuário não encontrado';
-    if (codigo === 'auth/wrong-password') return 'Senha incorreta';
-    if (codigo === 'auth/email-already-in-use') return 'Esse email já está em uso';
-    if (codigo === 'auth/weak-password') return 'Senha fraca. Mínimo 6 caracteres';
-    if (codigo === 'auth/invalid-credential') return 'Email ou senha incorretos';
-    return 'Erro. Tenta de novo';
-  };
-
-  const validar = () => {
-    if (!email || !senha || (modoCadastro && !nome)) {
-      Alert.alert('Opa', 'Preenche todos os campos');
-      return false;
+  const traduzErroFirebase = (code) => {
+    switch (code) {
+      case 'auth/user-not-found':
+      case 'auth/wrong-password':
+      case 'auth/invalid-credential':
+        return 'E-mail ou senha incorretos.';
+      case 'auth/invalid-email':
+        return 'E-mail inválido.';
+      case 'auth/too-many-requests':
+        return 'Muitas tentativas. Tente novamente mais tarde.';
+      case 'auth/network-request-failed':
+        return 'Sem conexão com a internet.';
+      default:
+        return 'Erro ao fazer login. Tente novamente.';
     }
-    return true;
   };
 
   const handleLogin = async () => {
-    if (!validar()) return;
+    if (!email || !senha) {
+      Alert.alert('Atenção', 'Preencha e-mail e senha.');
+      return;
+    }
+
     setLoading(true);
     try {
-      await signInWithEmailAndPassword(auth, email, senha);
+      await signInWithEmailAndPassword(auth, email.trim(), senha);
+      // O onAuthStateChanged no App.js vai redirecionar pra Home
     } catch (error) {
-      Alert.alert('Erro no login', traduzErro(error.code));
+      console.error('Erro login:', error);
+      Alert.alert('Erro', traduzErroFirebase(error.code));
     } finally {
       setLoading(false);
     }
   };
 
-  const handleCadastro = async () => {
-    if (!validar()) return;
-    setLoading(true);
+  const handleEsqueciSenha = async () => {
+    if (!email) {
+      Alert.alert('Atenção', 'Digite seu e-mail no campo acima para recuperar a senha.');
+      return;
+    }
+
+    setResetLoading(true);
     try {
-      const userCred = await createUserWithEmailAndPassword(auth, email, senha);
-      
-      await setDoc(doc(db, "users", userCred.user.uid), {
-        nome: nome,
-        email: email,
-        uid: userCred.user.uid,
-        criadoEm: serverTimestamp(),
-        foto: null,
-        bio: '',
-        latitude: null,
-        longitude: null,
-        online: true
-      });
-      
-      Alert.alert('Bem-vindo ao MeetPerto!', 'Conta criada com sucesso');
+      await sendPasswordResetEmail(auth, email.trim());
+      Alert.alert(
+        'E-mail enviado',
+        'Enviamos um link para redefinir sua senha. Cheque sua caixa de entrada e spam.'
+      );
     } catch (error) {
-      Alert.alert('Erro no cadastro', traduzErro(error.code));
+      console.error('Erro reset:', error);
+      let msg = 'Não foi possível enviar o e-mail.';
+      if (error.code === 'auth/user-not-found') {
+        msg = 'Nenhuma conta encontrada com este e-mail.';
+      } else if (error.code === 'auth/invalid-email') {
+        msg = 'E-mail inválido.';
+      }
+      Alert.alert('Erro', msg);
     } finally {
-      setLoading(false);
+      setResetLoading(false);
     }
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.logo}>MeetPerto</Text>
-      <Text style={styles.subtitulo}>
-        {modoCadastro ? 'Crie sua conta' : 'Entre na sua conta'}
+    <KeyboardAvoidingView 
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      style={{ flex: 1, padding: 20, justifyContent: 'center' }}
+    >
+      <Text style={{ fontSize: 32, fontWeight: 'bold', marginBottom: 40, textAlign: 'center' }}>
+        MeetPerto
       </Text>
-      
-      {modoCadastro && (
-        <TextInput 
-          style={styles.input} 
-          placeholder="Nome completo" 
-          value={nome} 
-          onChangeText={setNome}
-          placeholderTextColor="#999"
-        />
-      )}
-      
-      <TextInput 
-        style={styles.input} 
-        placeholder="Email" 
-        value={email} 
-        onChangeText={setEmail} 
-        keyboardType="email-address" 
+
+      <TextInput
+        placeholder="Email"
+        value={email}
+        onChangeText={setEmail}
+        style={{
+          borderWidth: 1,
+          borderColor: '#ddd',
+          padding: 15,
+          marginBottom: 15,
+          borderRadius: 10,
+          fontSize: 16
+        }}
         autoCapitalize="none"
-        placeholderTextColor="#999"
+        keyboardType="email-address"
+        autoComplete="email"
+        textContentType="emailAddress"
+        accessibilityLabel="Campo de e-mail"
+        editable={!loading}
       />
-      
-      <TextInput 
-        style={styles.input} 
-        placeholder="Senha" 
-        value={senha} 
-        onChangeText={setSenha} 
+      <TextInput
+        placeholder="Senha"
+        value={senha}
+        onChangeText={setSenha}
         secureTextEntry
-        placeholderTextColor="#999"
+        style={{
+          borderWidth: 1,
+          borderColor: '#ddd',
+          padding: 15,
+          marginBottom: 10,
+          borderRadius: 10,
+          fontSize: 16
+        }}
+        autoComplete="password"
+        textContentType="password"
+        accessibilityLabel="Campo de senha"
+        editable={!loading}
       />
 
       <TouchableOpacity 
-        style={[styles.botao, loading && styles.botaoDisabled]} 
-        onPress={modoCadastro ? handleCadastro : handleLogin} 
-        disabled={loading}
+        onPress={handleEsqueciSenha} 
+        disabled={resetLoading || loading}
+        style={{ alignSelf: 'flex-end', marginBottom: 20 }}
       >
-        {loading ? (
-          <ActivityIndicator color="#fff" />
+        {resetLoading ? (
+          <ActivityIndicator size="small" color="#4630EB" />
         ) : (
-          <Text style={styles.textoBotao}>
-            {modoCadastro ? 'Cadastrar' : 'Entrar'}
+          <Text style={{ color: '#4630EB', fontWeight: '600' }}>
+            Esqueci minha senha
           </Text>
         )}
       </TouchableOpacity>
 
-      <TouchableOpacity onPress={() => setModoCadastro(!modoCadastro)} disabled={loading}>
-        <Text style={styles.link}>
-          {modoCadastro ? 'Já tem conta? Fazer login' : 'Não tem conta? Cadastre-se'}
+      {loading ? (
+        <ActivityIndicator size="large" color="#4630EB" style={{ marginVertical: 20 }} />
+      ) : (
+        <TouchableOpacity
+          onPress={handleLogin}
+          disabled={loading}
+          style={{
+            backgroundColor: '#4630EB',
+            padding: 15,
+            borderRadius: 10,
+            alignItems: 'center'
+          }}
+          accessibilityLabel="Botão entrar"
+        >
+          <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold' }}>
+            Entrar
+          </Text>
+        </TouchableOpacity>
+      )}
+
+      <TouchableOpacity 
+        onPress={() => navigation.navigate('SignUp')}
+        style={{ marginTop: 30 }}
+        disabled={loading}
+      >
+        <Text style={{ textAlign: 'center', color: '#666' }}>
+          Não tem conta?{' '}
+          <Text style={{ color: '#4630EB', fontWeight: 'bold' }}>
+            Cadastre-se
+          </Text>
         </Text>
       </TouchableOpacity>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { 
-    flex: 1, 
-    justifyContent: 'center', 
-    padding: 24, 
-    backgroundColor: '#fff' 
-  },
-  logo: { 
-    fontSize: 40, 
-    fontWeight: '900', 
-    textAlign: 'center', 
-    marginBottom: 8, 
-    color: '#FF6B6B' 
-  },
-  subtitulo: { 
-    fontSize: 16, 
-    textAlign: 'center', 
-    marginBottom: 32, 
-    color: '#666' 
-  },
-  input: { 
-    borderWidth: 1, 
-    borderColor: '#E5E5E5', 
-    padding: 16, 
-    borderRadius: 12, 
-    marginBottom: 16, 
-    fontSize: 16, 
-    backgroundColor: '#F8F8F8',
-    color: '#000'
-  },
-  botao: { 
-    backgroundColor: '#FF6B6B', 
-    padding: 18, 
-    borderRadius: 12, 
-    alignItems: 'center', 
-    marginTop: 8 
-  },
-  botaoDisabled: { 
-    backgroundColor: '#FFA8A8' 
-  },
-  textoBotao: { 
-    color: '#fff', 
-    fontSize: 18, 
-    fontWeight: 'bold' 
-  },
-  link: { 
-    marginTop: 24, 
-    textAlign: 'center', 
-    color: '#FF6B6B', 
-    fontSize: 15 
-  }
-});
