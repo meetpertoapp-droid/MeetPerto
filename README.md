@@ -6,13 +6,13 @@
 
 App de relacionamentos +18 com Chat por proximidade em tempo real.
 
-[![React Native](https://img.shields.io/badge/React_Native-0.74.5-61DAFB?style=for-the-badge&logo=react)](https://reactnative.dev/)
-[![Expo](https://img.shields.io/badge/Expo-51.0.28-000020?style=for-the-badge&logo=expo)](https://expo.dev/)
-[![Firebase](https://img.shields.io/badge/Firebase-10.12.4-FFCA28?style=for-the-badge&logo=firebase)](https://firebase.google.com/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.3.3-3178C6?style=for-the-badge&logo=typescript)](https://www.typescriptlang.org/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
+[[React Native](https://img.shields.io/badge/React_Native-0.74.5-61DAFB?style=for-the-badge&logo=react)](https://reactnative.dev/)
+[[Expo](https://img.shields.io/badge/Expo-51.0.28-000020?style=for-the-badge&logo=expo)](https://expo.dev/)
+[[Firebase](https://img.shields.io/badge/Firebase-10.12.4-FFCA28?style=for-the-badge&logo=firebase)](https://firebase.google.com/)
+[[TypeScript](https://img.shields.io/badge/TypeScript-5.3.3-3178C6?style=for-the-badge&logo=typescript)](https://www.typescriptlang.org/)
+[[License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
 
-[Baixar na Play Store](#) • [Baixar na App Store](#) • [Política de Privacidade](./PRIVACIDADE.md) • [Termos de Uso](./TERMOS.md) • [Reportar Bug](https://github.com/eliasroberto26-arch/MeetPerto/issues)
+[Política de Privacidade](./PRIVACIDADE.md) • [Termos de Uso](./TERMOS.md) • [Reportar Bug](https://github.com/eliasroberto26-arch/MeetPerto/issues)
 
 </div>
 
@@ -27,6 +27,8 @@ App de relacionamentos +18 com Chat por proximidade em tempo real.
 <img src="./assets/screenshots/filtros.png" width="200" alt="Filtros de busca">
 </div>
 
+*Substitua as imagens em `/assets/screenshots/` pelos prints reais do app*
+
 ---
 
 ## 📱 Como Funciona
@@ -37,7 +39,7 @@ App de relacionamentos +18 com Chat por proximidade em tempo real.
 3. **Perfil**: Nome, Data nascimento 18+, Gênero, Cidade, Fotos até 7
 4. **Localização**: Usada só pra distância. Posição exata nunca exibida.
 5. **Termos**: Aceite obrigatório de Termos + Política de Privacidade
-6. **Segurança**: Senhas Argon2, HTTPS total, tokens com expiração, rate limit
+6. **Segurança**: Senhas Argon2id, HTTPS/TLS 1.3, tokens com expiração, rate limit
 
 **Fluxo**: Google/Apple/Telefone/E-mail → Código → Nome/Data → Fotos → Selfie liveness opcional → Localização → App
 
@@ -53,7 +55,7 @@ App de relacionamentos +18 com Chat por proximidade em tempo real.
 | **Bloqueio Automático** | Usuário com 3+ denúncias válidas é suspenso. |
 | **Criptografia** | HTTPS/TLS 1.3 em todo tráfego. Senhas Argon2id. |
 | **Distância Aproximada** | Exibe "A menos de 500m". Nunca coordenadas exatas. |
-| **Verificação Instagram** | Conecte seu perfil e ganhe selo azul. +40% matches. |
+| **Verificação Instagram** | Conecte seu perfil e ganhe selo azul de verificação. |
 
 ---
 
@@ -72,14 +74,13 @@ App de relacionamentos +18 com Chat por proximidade em tempo real.
 - **Chat livre**: Você pode iniciar a conversa após o match
 - **Desfazer curtida**: Volte 1 perfil
 - **Selo Responde Rápido**: Destaque se responder em < 1h
+- **Renovação automática mensal**
 
 ### **Plano Premium - R$ 79,90/trimestre**
 - Tudo do Essencial +
 - **15 Super Likes/mês**
 - **1 Boost/semana**: Perfil em destaque
 - **Filtros exclusivos**: Altura e Escolaridade
-- **Modo Radar Comercial**: Veja só quem está no mesmo local - shoppings, shows
-- **Match Caminhos Cruzados 2.0**: Aviso: "Compatível a 200m de você agora"
 
 ### **Plano VIP - R$ 149,90/semestre**
 - Tudo do Premium +
@@ -97,7 +98,7 @@ App de relacionamentos +18 com Chat por proximidade em tempo real.
 ## 🔍 Filtros de Busca
 
 | Filtro | Grátis | Essencial | Premium/VIP |
-| --- | --- | --- | --- |
+| --- | --- |
 | **Gênero** | ✅ | ✅ | ✅ |
 | **Idade 18-70** | ✅ | ✅ | ✅ |
 | **Tom de cabelo** | ✅ | ✅ | ✅ |
