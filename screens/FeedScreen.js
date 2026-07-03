@@ -1,161 +1,172 @@
-import React, { useState, useEffect, useLayoutEffect } from 'react'
-import { View, Text, FlatList, TouchableOpacity, Alert, ActivityIndicator } from 'react-native'
-import { Ionicons } from '@expo/vector-icons'
-import { Colors } from './theme/colors'
-import { db, auth } from '../firebaseConfig'
-import { collection, doc, setDoc, deleteDoc, getDocs, query, where } from 'firebase/firestore'
+import { useState, useEffect, useCallback } from 'react';
+import { View, Text, FlatList, ActivityIndicator, RefreshControl, Alert, TouchableOpacity } from 'react-native';
+import * as Location from 'expo-location';
+import ngeohash from 'ngeohash';
+import { collection, query, where, getDocs, doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { db, auth } from '../firebaseConfig';
+import { useFocusEffect } from '@react-navigation/native';
 
-export default function FeedScreen({ navigation, route }) {
-  const [profiles, setProfiles] = useState([])
-  const [likedIds, setLikedIds] = useState(new Set())
-  const [likesToday, setLikesToday] = useState(0)
-  const [loading, setLoading] = useState(true)
-  const user = auth.currentUser
-  const filters = route.params?.filters
+const GEOHASH_PRECISION = 5; // 2.4km x 2.4km. Cumpre sua Política de Privacidade
+const RAIO_BUSCA_KM = 10; // Busca usuários até 10km
 
-  // BOTÕES DO HEADER: Settings + Filtros
-  useLayoutEffect(() => {
-    navigation.setOptions({
-      headerRight: () => (
-        <View style={{ flexDirection: 'row', marginRight: 8 }}>
-          <TouchableOpacity 
-            onPress={() => navigation.navigate('Filtros')}
-            style={{ marginRight: 16 }}
-          >
-            <Ionicons name="options-outline" size={24} color={Colors.text} />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => navigation.navigate('Settings')}>
-            <Ionicons name="settings-outline" size={24} color={Colors.text} />
-          </TouchableOpacity>
-        </View>
-      ),
-    })
-  }, [navigation])
+export default function FeedScreen({ navigation }) {
+  const [usuariosProximos, setUsuariosProximos] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [permissaoLocal, setPermissaoLocal] = useState(null);
 
-  useEffect(() => {
-    if (user) {
-      loadProfiles()
-      checkLikesToday()
+  // 1. Pede permissão e atualiza localização ao focar na tela
+  useFocusEffect(
+    useCallback(() => {
+      verificarPermissaoEBuscar();
+    }, [])
+  );
+
+  const verificarPermissaoEBuscar = async () => {
+    const { status } = await Location.requestForegroundPermissionsAsync();
+    setPermissaoLocal(status);
+
+    if (status !== 'granted') {
+      setLoading(false);
+      Alert.alert(
+        'Localização desativada',
+        'Ative a localização para ver pessoas perto de você. Não salvamos seu GPS exato.',
+        [{ text: 'OK' }]
+      );
+      return;
     }
-  }, [filters, user])
+    await buscarUsuarios();
+  };
 
-  const checkLikesToday = async () => {
-    if (!user) return
-    const today = new Date().toDateString()
-    const q = query(
-      collection(db, 'likes'), 
-      where('fromUserId', '==', user.uid),
-      where('date', '==', today)
-    )
-    const snap = await getDocs(q)
-    setLikesToday(snap.size)
-    
-    const ids = new Set()
-    snap.forEach(doc => ids.add(doc.data().toUserId))
-    setLikedIds(ids)
-  }
-
-  const loadProfiles = async () => {
-    if (!user) return
-    setLoading(true)
-    
+  const buscarUsuarios = async () => {
     try {
-      let q = query(collection(db, 'users'))
+      setLoading(true);
+      const user = auth.currentUser;
+      if (!user) return;
 
-      if (filters?.hairColor && filters.hairColor!== 'Ver todos') {
-        q = query(q, where('hairColor', '==', filters.hairColor))
-      }
-      if (filters?.gender && filters.gender!== 'Ver todos') {
-        q = query(q, where('gender', '==', filters.gender))
-      }
+      // 2. Pega localização com BAIXA precisão pra não expor GPS exato
+      const location = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced, // ~100m de erro. Não é GPS exato
+      });
 
-      const snap = await getDocs(q)
-      let list = snap.docs.map(doc => ({ id: doc.id,...doc.data() }))
+      const { latitude, longitude } = location.coords;
       
-      list = list.filter(profile => 
-        profile.id!== user.uid && 
-        profile.invisibleMode!== true
-      )
-      
-      setProfiles(list)
+      // 3. Gera geohash com precisão 5 = 2.4km. Impossível reverter pra rua
+      const meuGeohash = ngeohash.encode(latitude, longitude, GEOHASH_PRECISION);
+
+      // 4. Salva APENAS o geohash no perfil. Nunca lat/lng
+      const userRef = doc(db, 'usuarios', user.uid);
+      await setDoc(userRef, {
+        geohash: meuGeohash,
+        ultimaLocalizacao: serverTimestamp(),
+        ativo: true,
+      }, { merge: true });
+
+      // 5. Busca geohashes vizinhos pra cobrir o raio de 10km
+      const geohashesVizinhos = ngeohash.neighbors(meuGeohash);
+      const geohashesParaBusca = [meuGeohash, ...Object.values(geohashesVizinhos)];
+
+      // 6. Query no Firestore pelos geohashes. 1 query por geohash
+      const promises = geohashesParaBusca.map(hash => {
+        const q = query(
+          collection(db, 'usuarios'),
+          where('geohash', '>=', hash),
+          where('geohash', '<=', hash + '~'),
+          where('ativo', '==', true)
+        );
+        return getDocs(q);
+      });
+
+      const snapshots = await Promise.all(promises);
+      const usuarios = [];
+      snapshots.forEach(snap => {
+        snap.forEach(doc => {
+          const data = doc.data();
+          // Não mostra o próprio usuário e não mostra quem não tem foto/nome
+          if (doc.id !== user.uid && data.nome && data.fotoUrl) {
+            usuarios.push({ id: doc.id, ...data });
+          }
+        });
+      });
+
+      // 7. Remove duplicados e embaralha
+      const usuariosUnicos = Array.from(new Map(usuarios.map(u => [u.id, u])).values());
+      setUsuariosProximos(usuariosUnicos.sort(() => 0.5 - Math.random()));
+
     } catch (error) {
-      Alert.alert('Erro', 'Não foi possível carregar perfis')
-      console.log(error)
+      console.error('Erro ao buscar usuários:', error);
+      Alert.alert('Erro', 'Não foi possível buscar pessoas próximas.');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
     }
-    setLoading(false)
-  }
+  };
 
-  const handleLike = async (profileId) => {
-    if (!user) return
-    const alreadyLiked = likedIds.has(profileId)
-    
-    if (alreadyLiked) {
-      const likeId = `${user.uid}_${profileId}`
-      await deleteDoc(doc(db, 'likes', likeId))
-      setLikedIds(prev => {
-        const newSet = new Set(prev)
-        newSet.delete(profileId)
-        return newSet
-      })
-      setLikesToday(prev => prev - 1)
-      return
-    }
+  const onRefresh = () => {
+    setRefreshing(true);
+    buscarUsuarios();
+  };
 
-    if (likesToday >= 10) {
-      Alert.alert('Limite atingido', 'Você só pode curtir 10 perfis por dia. Vire Premium para curtidas ilimitadas.')
-      return
-    }
+  // Componente do Card de Usuário
+  const renderUsuario = ({ item }) => (
+    <TouchableOpacity 
+      onPress={() => navigation.navigate('Perfil', { userId: item.id })}
+      style={{
+        flex: 1,
+        margin: 5,
+        backgroundColor: '#fff',
+        borderRadius: 12,
+        shadowColor: '#000',
+        shadowOpacity: 0.1,
+        shadowRadius: 5,
+        elevation: 3,
+      }}
+    >
+      <Image 
+        source={{ uri: item.fotoUrl }} 
+        style={{ width: '100%', height: 200, borderTopLeftRadius: 12, borderTopRightRadius: 12 }}
+      />
+      <Text style={{ fontWeight: 'bold', fontSize: 16, padding: 10 }}>
+        {item.nome}, {item.idade}
+      </Text>
+    </TouchableOpacity>
+  );
 
-    const likeId = `${user.uid}_${profileId}`
-    await setDoc(doc(db, 'likes', likeId), {
-      fromUserId: user.uid,
-      toUserId: profileId,
-      date: new Date().toDateString(),
-      timestamp: Date.now()
-    })
-    
-    setLikedIds(prev => new Set(prev).add(profileId))
-    setLikesToday(prev => prev + 1)
-  }
-
-  if (loading) {
+  if (permissaoLocal === 'denied') {
     return (
-      <View style={{flex: 1, justifyContent: 'center', backgroundColor: Colors.background}}>
-        <ActivityIndicator size="large" color={Colors.primary} />
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+        <Text style={{ textAlign: 'center', fontSize: 16 }}>
+          Precisamos da sua localização para mostrar pessoas próximas.{'\n\n'}
+          Seu GPS exato nunca é salvo, conforme nossa Política de Privacidade.
+        </Text>
+        <TouchableOpacity onPress={verificarPermissaoEBuscar} style={{ marginTop: 20, backgroundColor: '#4630EB', padding: 15, borderRadius: 10 }}>
+          <Text style={{ color: '#fff', fontWeight: 'bold' }}>Ativar Localização</Text>
+        </TouchableOpacity>
       </View>
-    )
+    );
   }
 
   return (
-    <FlatList
-      data={profiles}
-      keyExtractor={item => item.id}
-      contentContainerStyle={{ padding: 16, backgroundColor: Colors.background }}
-      renderItem={({ item }) => (
-        <View style={{ marginBottom: 16, padding: 16, backgroundColor: Colors.card, borderRadius: 12 }}>
-          <Text style={{ fontSize: 18, fontWeight: '600', color: Colors.text, marginBottom: 8 }}>
-            {item.name || 'Sem nome'}
-          </Text>
-          <TouchableOpacity 
-            onPress={() => handleLike(item.id)}
-            style={{ 
-              backgroundColor: likedIds.has(item.id)? Colors.primary : Colors.border,
-              padding: 12,
-              borderRadius: 8,
-              alignItems: 'center'
-            }}
-          >
-            <Text style={{ color: likedIds.has(item.id)? Colors.textInverse : Colors.text, fontWeight: '600' }}>
-              {likedIds.has(item.id)? 'Curtido' : 'Curtir'}
+    <View style={{ flex: 1, backgroundColor: '#f5f5f5' }}>
+      {loading ? (
+        <ActivityIndicator size="large" color="#4630EB" style={{ flex: 1 }} />
+      ) : (
+        <FlatList
+          data={usuariosProximos}
+          renderItem={renderUsuario}
+          keyExtractor={item => item.id}
+          numColumns={2}
+          contentContainerStyle={{ padding: 5 }}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#4630EB" />
+          }
+          ListEmptyComponent={
+            <Text style={{ textAlign: 'center', marginTop: 50, color: '#666' }}>
+              Ninguém por perto ainda. Chame seus amigos!
             </Text>
-          </TouchableOpacity>
-        </View>
+          }
+        />
       )}
-      ListEmptyComponent={
-        <Text style={{ textAlign: 'center', marginTop: 40, color: Colors.textLight }}>
-          Nenhum perfil encontrado
-        </Text>
-      }
-    />
-  )
+    </View>
+  );
 }
