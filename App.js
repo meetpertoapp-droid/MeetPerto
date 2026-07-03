@@ -1,104 +1,88 @@
-import React, { useEffect, useState } from 'react'
-import { NavigationContainer } from '@react-navigation/native'
-import { createStackNavigator } from '@react-navigation/stack'
-import { ActivityIndicator, View, StatusBar } from 'react-native'
-import { onAuthStateChanged } from 'firebase/auth'
-import { auth } from './firebaseConfig'
-import { Colors } from './screens/theme/colors'
+import { useState, useEffect, useRef } from 'react';
+import { NavigationContainer } from '@react-navigation/native';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { onAuthStateChanged } from 'firebase/auth';
+import { auth } from './firebaseConfig';
+import { ActivityIndicator, View, StatusBar, AppState } from 'react-native';
 
-// Telas
-import AuthScreen from './screens/AuthScreen'
-import FeedScreen from './screens/FeedScreen'
-import SettingsScreen from './screens/SettingsScreen'
-import PerfilScreen from './screens/PerfilScreen'
-import PlanosScreen from './screens/PlanosScreen'
-import FiltrosScreen from './screens/FiltrosScreen'
-import RadarScreen from './screens/RadarScreen'
-import FilaLinearScreen from './screens/FilaLinearScreen'
+// Screens
+import AuthScreen from './screens/AuthScreen';
+import SignUpScreen from './screens/SignUpScreen';
+import FeedScreen from './screens/FeedScreen';
+import PerfilScreen from './screens/PerfilScreen';
+import SettingsScreen from './screens/SettingsScreen';
+// ... importa as outras screens que você tiver
 
-const Stack = createStackNavigator()
+const Stack = createNativeStackNavigator();
 
 export default function App() {
-  const [initializing, setInitializing] = useState(true)
-  const [user, setUser] = useState(null)
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const appState = useRef(AppState.currentState);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setUser(user)
-      if (initializing) setInitializing(false)
-    })
-    return unsubscribe
-  }, [])
+    // Listener principal do Firebase Auth
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      if (firebaseUser) {
+        // Usuário logado
+        setUser({
+          uid: firebaseUser.uid,
+          email: firebaseUser.email,
+          emailVerified: firebaseUser.emailVerified,
+        });
+      } else {
+        // Usuário deslogado
+        setUser(null);
+      }
+      setLoading(false);
+    });
 
-  if (initializing) {
+    // Listener pra quando o app volta do background
+    // Força o Firebase a checar se o token ainda é válido
+    const subscription = AppState.addEventListener('change', nextAppState => {
+      if (appState.current.match(/inactive|background/) && nextAppState === 'active') {
+        auth.currentUser?.reload();
+      }
+      appState.current = nextAppState;
+    });
+
+    // Cleanup: remove listeners quando o app desmonta
+    return () => {
+      unsubscribe();
+      subscription.remove();
+    };
+  }, []);
+
+  // Tela de Splash enquanto verifica se tá logado
+  if (loading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', backgroundColor: Colors.background }}>
-        <ActivityIndicator size="large" color={Colors.primary} />
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff' }}>
+        <StatusBar barStyle="dark-content" />
+        <ActivityIndicator size="large" color="#4630EB" />
       </View>
-    )
+    );
   }
 
   return (
-    <>
-      <StatusBar barStyle="dark-content" backgroundColor={Colors.background} />
-      <NavigationContainer>
-        <Stack.Navigator
-          screenOptions={{
-            headerStyle: { backgroundColor: Colors.background },
-            headerTintColor: Colors.text,
-            headerTitleStyle: { fontWeight: '700' },
-            headerShadowVisible: false,
-          }}
-        >
-          {user ? (
-            // Rotas logado
-            <>
-              <Stack.Screen 
-                name="Feed" 
-                component={FeedScreen} 
-                options={{ title: 'MeetPerto' }} 
-              />
-              <Stack.Screen 
-                name="Settings" 
-                component={SettingsScreen} 
-                options={{ title: 'Configurações' }} 
-              />
-              <Stack.Screen 
-                name="Perfil" 
-                component={PerfilScreen} 
-                options={{ title: 'Meu Perfil' }} 
-              />
-              <Stack.Screen 
-                name="Planos" 
-                component={PlanosScreen} 
-                options={{ title: 'Planos VIP' }} 
-              />
-              <Stack.Screen 
-                name="Filtros" 
-                component={FiltrosScreen} 
-                options={{ title: 'Filtros' }} 
-              />
-              <Stack.Screen 
-                name="Radar" 
-                component={RadarScreen} 
-                options={{ title: 'Radar' }} 
-              />
-              <Stack.Screen 
-                name="FilaLinear" 
-                component={FilaLinearScreen} 
-                options={{ title: 'Fila' }} 
-              />
-            </>
-          ) : (
-            // Rotas deslogado
-            <Stack.Screen 
-              name="Auth" 
-              component={AuthScreen} 
-              options={{ headerShown: false }} 
-            />
-          )}
-        </Stack.Navigator>
-      </NavigationContainer>
-    </>
-  )
+    <NavigationContainer>
+      <StatusBar barStyle="dark-content" />
+      <Stack.Navigator screenOptions={{ headerShown: false }}>
+        {user ? (
+          // Rotas de usuário LOGADO
+          <>
+            <Stack.Screen name="Feed" component={FeedScreen} />
+            <Stack.Screen name="Perfil" component={PerfilScreen} />
+            <Stack.Screen name="Settings" component={SettingsScreen} />
+            {/* Adiciona aqui: RadarScreen, FiltrosScreen, etc */}
+          </>
+        ) : (
+          // Rotas de usuário DESLOGADO
+          <>
+            <Stack.Screen name="Auth" component={AuthScreen} />
+            <Stack.Screen name="SignUp" component={SignUpScreen} />
+          </>
+        )}
+      </Stack.Navigator>
+    </NavigationContainer>
+  );
 }
