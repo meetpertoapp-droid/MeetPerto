@@ -4,7 +4,7 @@ import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from "fire
 import { auth, db } from '../firebaseConfig';
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 
-export default function LoginScreen() {
+export default function AuthScreen() {
   const [email, setEmail] = useState('');
   const [senha, setSenha] = useState('');
   const [nome, setNome] = useState('');
@@ -17,6 +17,7 @@ export default function LoginScreen() {
     if (codigo === 'auth/wrong-password') return 'Senha incorreta';
     if (codigo === 'auth/email-already-in-use') return 'Esse email já está em uso';
     if (codigo === 'auth/weak-password') return 'Senha fraca. Mínimo 6 caracteres';
+    if (codigo === 'auth/invalid-credential') return 'Email ou senha incorretos';
     return 'Erro. Tenta de novo';
   };
 
@@ -52,8 +53,13 @@ export default function LoginScreen() {
         uid: userCred.user.uid,
         criadoEm: serverTimestamp(),
         foto: null,
-        bio: ''
+        bio: '',
+        latitude: null,
+        longitude: null,
+        online: true
       });
+      
+      Alert.alert('Bem-vindo ao MeetPerto!', 'Conta criada com sucesso');
     } catch (error) {
       Alert.alert('Erro no cadastro', traduzErro(error.code));
     } finally {
@@ -69,30 +75,106 @@ export default function LoginScreen() {
       </Text>
       
       {modoCadastro && (
-        <TextInput style={styles.input} placeholder="Nome completo" value={nome} onChangeText={setNome} />
+        <TextInput 
+          style={styles.input} 
+          placeholder="Nome completo" 
+          value={nome} 
+          onChangeText={setNome}
+          placeholderTextColor="#999"
+        />
       )}
       
-      <TextInput style={styles.input} placeholder="Email" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
-      <TextInput style={styles.input} placeholder="Senha" value={senha} onChangeText={setSenha} secureTextEntry />
+      <TextInput 
+        style={styles.input} 
+        placeholder="Email" 
+        value={email} 
+        onChangeText={setEmail} 
+        keyboardType="email-address" 
+        autoCapitalize="none"
+        placeholderTextColor="#999"
+      />
+      
+      <TextInput 
+        style={styles.input} 
+        placeholder="Senha" 
+        value={senha} 
+        onChangeText={setSenha} 
+        secureTextEntry
+        placeholderTextColor="#999"
+      />
 
-      <TouchableOpacity style={[styles.botao, loading && styles.botaoDisabled]} onPress={modoCadastro ? handleCadastro : handleLogin} disabled={loading}>
-        {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.textoBotao}>{modoCadastro ? 'Cadastrar' : 'Entrar'}</Text>}
+      <TouchableOpacity 
+        style={[styles.botao, loading && styles.botaoDisabled]} 
+        onPress={modoCadastro ? handleCadastro : handleLogin} 
+        disabled={loading}
+      >
+        {loading ? (
+          <ActivityIndicator color="#fff" />
+        ) : (
+          <Text style={styles.textoBotao}>
+            {modoCadastro ? 'Cadastrar' : 'Entrar'}
+          </Text>
+        )}
       </TouchableOpacity>
 
       <TouchableOpacity onPress={() => setModoCadastro(!modoCadastro)} disabled={loading}>
-        <Text style={styles.link}>{modoCadastro ? 'Já tem conta? Fazer login' : 'Não tem conta? Cadastre-se'}</Text>
+        <Text style={styles.link}>
+          {modoCadastro ? 'Já tem conta? Fazer login' : 'Não tem conta? Cadastre-se'}
+        </Text>
       </TouchableOpacity>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: 'center', padding: 24, backgroundColor: '#fff' },
-  logo: { fontSize: 40, fontWeight: '900', textAlign: 'center', marginBottom: 8, color: '#FF6B6B' },
-  subtitulo: { fontSize: 16, textAlign: 'center', marginBottom: 32, color: '#666' },
-  input: { borderWidth: 1, borderColor: '#E5E5E5', padding: 16, borderRadius: 12, marginBottom: 16, fontSize: 16, backgroundColor: '#F8F8F8' },
-  botao: { backgroundColor: '#FF6B6B', padding: 18, borderRadius: 12, alignItems: 'center', marginTop: 8 },
-  botaoDisabled: { backgroundColor: '#FFA8A8' },
-  textoBotao: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
-  link: { marginTop: 24, textAlign: 'center', color: '#FF6B6B', fontSize: 15 }
+  container: { 
+    flex: 1, 
+    justifyContent: 'center', 
+    padding: 24, 
+    backgroundColor: '#fff' 
+  },
+  logo: { 
+    fontSize: 40, 
+    fontWeight: '900', 
+    textAlign: 'center', 
+    marginBottom: 8, 
+    color: '#FF6B6B' 
+  },
+  subtitulo: { 
+    fontSize: 16, 
+    textAlign: 'center', 
+    marginBottom: 32, 
+    color: '#666' 
+  },
+  input: { 
+    borderWidth: 1, 
+    borderColor: '#E5E5E5', 
+    padding: 16, 
+    borderRadius: 12, 
+    marginBottom: 16, 
+    fontSize: 16, 
+    backgroundColor: '#F8F8F8',
+    color: '#000'
+  },
+  botao: { 
+    backgroundColor: '#FF6B6B', 
+    padding: 18, 
+    borderRadius: 12, 
+    alignItems: 'center', 
+    marginTop: 8 
+  },
+  botaoDisabled: { 
+    backgroundColor: '#FFA8A8' 
+  },
+  textoBotao: { 
+    color: '#fff', 
+    fontSize: 18, 
+    fontWeight: 'bold' 
+  },
+  link: { 
+    marginTop: 24, 
+    textAlign: 'center', 
+    color: '#FF6B6B', 
+    fontSize: 15 
+  }
 });
