@@ -1,20 +1,25 @@
-import { initializeApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
-import { getStorage } from 'firebase/storage';
+// firebase.js - ARQUIVO COMPLETO DO MEETPERTO
+import { initializeApp } from "firebase/app";
+import { getAuth } from "firebase/auth";
+import { getFirestore } from "firebase/firestore";
+import { getStorage } from "firebase/storage";
 
+// Configuração do seu app MeetPerto
 const firebaseConfig = {
-  apiKey: "AIzaSyAlgnTFVTjbe96J9x13KPROMKWTaCapFFw",
-  authDomain: "meetperto-app-2aad2.firebaseapp.com",
-  projectId: "meetperto-app-2aad2",
-  storageBucket: "meetperto-app-2aad2.firebasestorage.app",
-  messagingSenderId: "99473420964",
-  appId: "1:99473420964:web:80a465eb92a0c6a8f6ec31"
+  apiKey: "AIzaSyAFUucTYq7ZO0ki2UO83vtOvcjLgPEMp9A",
+  authDomain: "meetperto2112.firebaseapp.com",
+  projectId: "meetperto2112",
+  storageBucket: "meetperto2112.firebasestorage.app",
+  messagingSenderId: "525891276454",
+  appId: "1:525891276454:web:4d81481caa246b668b2e67"
 };
 
+// Inicializa o Firebase
 const app = initializeApp(firebaseConfig);
 
+// Exporta tudo que você vai usar no app
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const storage = getStorage(app);
+
 export default app;
