@@ -4,57 +4,14 @@
     "slug": "meetperto",
     "version": "2.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
-    "userInterfaceStyle": "automatic",
-    "splash": {
-      "image": "./assets/splash.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#FF4B8B"
-    },
-    "updates": {
-      "fallbackToCacheTimeout": 0
-    },
-    "assetBundlePatterns": [
-      "**/*"
-    ],
-    "ios": {
-      "supportsTablet": true,
-      "bundleIdentifier": "com.meetperto.app",
-      "buildNumber": "2.0.0"
-    },
+    "userInterfaceStyle": "light",
     "android": {
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#FF4B8B"
-      },
-      "package": "com.meetperto.app",
-      "versionCode": 2,
-      "splash": {
-        "image": "./assets/splash.png",
-        "resizeMode": "contain",
-        "backgroundColor": "#FF4B8B"
-      }
-    },
-    "web": {
-      "favicon": "./assets/favicon.png",
-      "bundler": "metro"
+      "package": "com.eliasroberto26.meetperto",
+      "googleServicesFile": "./google-services.json",
+      "versionCode": 2
     },
     "plugins": [
-      [
-        "expo-splash-screen",
-        {
-          "image": "./assets/splash.png",
-          "imageWidth": 200,
-          "resizeMode": "contain",
-          "backgroundColor": "#FF4B8B"
-        }
-      ],
-      "expo-status-bar"
-    ],
-    "extra": {
-      "eas": {
-        "projectId": "a1b2c3d4-e5f6-7890-abcd-1234567890ab"
-      }
-    }
+      "@react-native-firebase/app"
+    ]
   }
 }
