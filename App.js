@@ -1,79 +1,87 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
-import { createStackNavigator } from '@react-navigation/stack';
-import { StatusBar } from 'expo-status-bar';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { onAuthStateChanged } from 'firebase/auth';
+import { auth } from './firebaseConfig';
+import { ActivityIndicator, View, StatusBar, AppState } from 'react-native';
 
-// AUTH - CADASTRO
-import Etapa1Cadastro from './src/screens/auth/Etapa1Cadastro';
-import Etapa2Verificacao from './src/screens/auth/Etapa2Verificacao';
-import Etapa3Informacoes from './src/screens/auth/Etapa3Informacoes';
-import Etapa4Fotos from './src/screens/auth/Etapa4Fotos';
-import SelfieLiveness from './src/screens/auth/SelfieLiveness';
-import Etapa5Preferencias from './src/screens/auth/Etapa5Preferencias';
-import Etapa6Termos from './src/screens/auth/Etapa6Termos';
-import Etapa7Finalizar from './src/screens/auth/Etapa7Finalizar';
+// Screens
+import AuthScreen from './screens/AuthScreen';
+import SignUpScreen from './screens/SignUpScreen';
+import FeedScreen from './screens/FeedScreen';
+import PerfilScreen from './screens/PerfilScreen';
+import SettingsScreen from './screens/SettingsScreen';
+// ... importa as outras screens que você tiver
 
-// MAIN - APP PRINCIPAL
-import HomeFeed from './src/screens/main/HomeFeed';
-import ChatMatch from './src/screens/main/ChatMatch';
-import ModoRadar from './src/screens/main/ModoRadar';
-import Perfil from './src/screens/main/Perfil';
-
-const Stack = createStackNavigator();
-
-export const CONFIG = {
-  COR_PRINCIPAL: '#FF4458',
-  COR_SECUNDARIA: '#9C27B0',
-  RAIO_MATCH: 5, // km
-};
+const Stack = createNativeStackNavigator();
 
 export default function App() {
-  const [initialRoute, setInitialRoute] = useState(null);
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const appState = useRef(AppState.currentState);
 
   useEffect(() => {
-    checkLoginStatus();
+    // Listener principal do Firebase Auth
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      if (firebaseUser) {
+        // Usuário logado
+        setUser({
+          uid: firebaseUser.uid,
+          email: firebaseUser.email,
+          emailVerified: firebaseUser.emailVerified,
+        });
+      } else {
+        // Usuário deslogado
+        setUser(null);
+      }
+      setLoading(false);
+    });
+
+    // Listener pra quando o app volta do background
+    // Força o Firebase a checar se o token ainda é válido
+    const subscription = AppState.addEventListener('change', nextAppState => {
+      if (appState.current.match(/inactive|background/) && nextAppState === 'active') {
+        auth.currentUser?.reload();
+      }
+      appState.current = nextAppState;
+    });
+
+    // Cleanup: remove listeners quando o app desmonta
+    return () => {
+      unsubscribe();
+      subscription.remove();
+    };
   }, []);
 
-  const checkLoginStatus = async () => {
-    try {
-      const userToken = await AsyncStorage.getItem('userToken');
-      if (userToken) {
-        setInitialRoute('HomeFeed');
-      } else {
-        setInitialRoute('Etapa1Cadastro');
-      }
-    } catch (e) {
-      setInitialRoute('Etapa1Cadastro');
-    }
-  };
-
-  if (!initialRoute) {
-    return null; // Loading
+  // Tela de Splash enquanto verifica se tá logado
+  if (loading) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff' }}>
+        <StatusBar barStyle="dark-content" />
+        <ActivityIndicator size="large" color="#4630EB" />
+      </View>
+    );
   }
 
   return (
     <NavigationContainer>
-      <StatusBar style="dark" />
-      <Stack.Navigator 
-        initialRouteName={initialRoute}
-        screenOptions={{ headerShown: false }}
-      >
-        {/* FLUXO DE CADASTRO */}
-        <Stack.Screen name="Etapa1Cadastro" component={Etapa1Cadastro} />
-        <Stack.Screen name="Etapa2Verificacao" component={Etapa2Verificacao} />
-        <Stack.Screen name="Etapa3Informacoes" component={Etapa3Informacoes} />
-        <Stack.Screen name="Etapa4Fotos" component={Etapa4Fotos} />
-        <Stack.Screen name="SelfieLiveness" component={SelfieLiveness} />
-        <Stack.Screen name="Etapa5Preferencias" component={Etapa5Preferencias} />
-        <Stack.Screen name="Etapa6Termos" component={Etapa6Termos} />
-        <Stack.Screen name="Etapa7Finalizar" component={Etapa7Finalizar} />
-
-        {/* APP PRINCIPAL */}
-        <Stack.Screen name="HomeFeed" component={HomeFeed} />
-        <Stack.Screen name="ChatMatch" component={ChatMatch} />
-        <Stack.Screen name="ModoRadar" component={ModoRadar} />
-        <Stack.Screen name="Perfil" component={Perfil} />
+      <StatusBar barStyle="dark-content" />
+      <Stack.Navigator screenOptions={{ headerShown: false }}>
+        {user ? (
+          // Rotas de usuário LOGADO
+          <>
+            <Stack.Screen name="Feed" component={FeedScreen} />
+            <Stack.Screen name="Perfil" component={PerfilScreen} />
+            <Stack.Screen name="Settings" component={SettingsScreen} />
+            {/* Adiciona aqui: RadarScreen, FiltrosScreen, etc */}
+          </>
+        ) : (
+          // Rotas de usuário DESLOGADO
+          <>
+            <Stack.Screen name="Auth" component={AuthScreen} />
+            <Stack.Screen name="SignUp" component={SignUpScreen} />
+          </>
+        )}
       </Stack.Navigator>
     </NavigationContainer>
   );
