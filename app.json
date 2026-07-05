@@ -41,7 +41,6 @@
         "ACCESS_COARSE_LOCATION",
         "ACCESS_BACKGROUND_LOCATION",
         "CAMERA",
-        "READ_EXTERNAL_STORAGE",
         "RECORD_AUDIO"
       ],
       "googleServicesFile": "./google-services.json"
@@ -65,15 +64,8 @@
       ],
       "expo-secure-store"
     ],
-    "extra": {
-      "eas": {
-        "projectId": "COLE_SEU_PROJECT_ID_AQUI"
-      }
-    },
+    "extra": {},
     "owner": "eliasroberto26-arch",
-    "updates": {
-      "url": "https://u.expo.dev/COLE_SEU_PROJECT_ID_AQUI"
-    },
     "runtimeVersion": {
       "policy": "sdkVersion"
     }
